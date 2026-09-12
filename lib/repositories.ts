@@ -8,6 +8,7 @@ export type Repo = {
   name: string;
   owner: string;
   description: string;
+  descriptionZh: string;
   category: string;
   language: string;
   stars: number;
@@ -30,6 +31,7 @@ export const repositories: Repo[] = [
     name: 'stagehand',
     owner: 'browserbase',
     description: 'AI browser automation framework built for production agents.',
+    descriptionZh: '面向生产环境 AI 智能体的浏览器自动化框架。',
     category: 'Agents',
     language: 'TypeScript',
     stars: 12842,
@@ -51,6 +53,7 @@ export const repositories: Repo[] = [
     name: 'open-computer-use',
     owner: 'helios-labs',
     description: 'Composable computer-use agents that run locally.',
+    descriptionZh: '可在本地运行、支持自由组合的计算机操作智能体。',
     category: 'AI',
     language: 'Python',
     stars: 1847,
@@ -72,6 +75,7 @@ export const repositories: Repo[] = [
     name: 'mcp-router',
     owner: 'tensorhq',
     description: 'Fast, observable gateway for production MCP servers.',
+    descriptionZh: '为生产级 MCP 服务打造的高性能、可观测网关。',
     category: 'MCP',
     language: 'Rust',
     stars: 3219,
@@ -93,6 +97,7 @@ export const repositories: Repo[] = [
     name: 'signalbase',
     owner: 'market-labs',
     description: 'Open source prediction market data and execution stack.',
+    descriptionZh: '开源预测市场数据与交易执行基础设施。',
     category: 'Trading',
     language: 'Go',
     stars: 976,
@@ -114,6 +119,7 @@ export const repositories: Repo[] = [
     name: 'ragstream',
     owner: 'northstar-ai',
     description: 'Streaming RAG pipeline with sub-100ms retrieval.',
+    descriptionZh: '检索延迟低于 100 毫秒的流式 RAG 数据管线。',
     category: 'Data',
     language: 'Python',
     stars: 7481,
@@ -136,6 +142,7 @@ export const repositories: Repo[] = [
     owner: 'stableworks',
     description:
       'Stablecoin orchestration primitives for application developers.',
+    descriptionZh: '面向应用开发者的稳定币编排组件与开发工具。',
     category: 'Crypto',
     language: 'TypeScript',
     stars: 1422,
@@ -157,6 +164,7 @@ export const repositories: Repo[] = [
     name: 'shipyard',
     owner: 'formless',
     description: 'Self-hosted preview environments from a single config.',
+    descriptionZh: '通过单一配置创建可自托管的预览环境。',
     category: 'Infrastructure',
     language: 'Go',
     stars: 5294,
@@ -181,4 +189,11 @@ export const signalStyles: Record<Signal, string> = {
   'NEW & HOT': 'border-orange-400/30 bg-orange-400/10 text-orange-300',
   'HIGH CONVERSION': 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300',
   'EARLY SIGNAL': 'border-sky-400/30 bg-sky-400/10 text-sky-300',
+};
+export const signalZh: Record<Signal, string> = {
+  BREAKOUT: '爆发',
+  ACCELERATING: '加速中',
+  'NEW & HOT': '新晋热门',
+  'HIGH CONVERSION': '高转化',
+  'EARLY SIGNAL': '早期信号',
 };

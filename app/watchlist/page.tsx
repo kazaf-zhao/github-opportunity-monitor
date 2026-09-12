@@ -34,6 +34,7 @@ declare global {
   }
 }
 export default function Watchlist() {
+  const [zh, setZh] = useState(true);
   const [items, setItems] = useState(() =>
     defaults.map((keyword, i) => ({ keyword, enabled: i < 11 })),
   );
@@ -106,7 +107,7 @@ export default function Watchlist() {
         <header className="mb-8 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link
-              aria-label="Back to discover"
+              aria-label={zh ? '返回发现页' : 'Back to discover'}
               className="grid size-9 place-items-center rounded-md border border-white/10 text-zinc-500 hover:text-white"
               href="/"
             >
@@ -114,14 +115,25 @@ export default function Watchlist() {
             </Link>
             <div>
               <div className="mono text-[10px] uppercase tracking-[.2em] text-cyan-400">
-                Signal configuration
+                {zh ? '信号配置' : 'Signal configuration'}
               </div>
-              <h1 className="mt-1 text-2xl font-semibold">Keyword watchlist</h1>
+              <h1 className="mt-1 text-2xl font-semibold">
+                {zh ? '关键词监控' : 'Keyword watchlist'}
+              </h1>
             </div>
           </div>
-          <div className="hidden items-center gap-2 text-xs text-zinc-500 sm:flex">
-            <TrendingUp className="size-4 text-cyan-300" />
-            {items.filter((x) => x.enabled).length} active monitors
+          <div className="flex items-center gap-3 text-xs text-zinc-500">
+            <button
+              className="rounded-md border border-white/10 px-2.5 py-1.5 mono text-[10px] hover:text-cyan-200"
+              onClick={() => setZh((value) => !value)}
+            >
+              {zh ? 'EN' : '中文'}
+            </button>
+            <div className="hidden items-center gap-2 sm:flex">
+              <TrendingUp className="size-4 text-cyan-300" />
+              {items.filter((x) => x.enabled).length}{' '}
+              {zh ? '个启用中的监控' : 'active monitors'}
+            </div>
           </div>
         </header>
         <div className="grid gap-5 lg:grid-cols-[1fr_310px]">
@@ -131,7 +143,7 @@ export default function Watchlist() {
                 <Search className="absolute left-3 top-2.5 size-4 text-zinc-600" />
                 <Input
                   className="h-9 border-white/[.08] bg-white/[.03] pl-9"
-                  placeholder="Filter keywords…"
+                  placeholder={zh ? '筛选关键词…' : 'Filter keywords…'}
                 />
               </div>
               <form
@@ -142,15 +154,15 @@ export default function Watchlist() {
                 }}
               >
                 <Input
-                  aria-label="New keyword"
+                  aria-label={zh ? '新关键词' : 'New keyword'}
                   className="h-9 border-white/[.08] bg-white/[.03]"
                   onChange={(e) => setDraft(e.target.value)}
-                  placeholder="Add a keyword"
+                  placeholder={zh ? '添加关键词' : 'Add a keyword'}
                   value={draft}
                 />
                 <Button className="h-9 bg-cyan-300 text-slate-950 hover:bg-cyan-200">
                   <Plus />
-                  Add
+                  {zh ? '添加' : 'Add'}
                 </Button>
               </form>
             </div>
@@ -161,7 +173,7 @@ export default function Watchlist() {
                   key={x.keyword}
                 >
                   <Switch
-                    aria-label={`${x.enabled ? 'Disable' : 'Enable'} ${x.keyword}`}
+                    aria-label={`${zh ? (x.enabled ? '停用' : '启用') : x.enabled ? 'Disable' : 'Enable'} ${x.keyword}`}
                     checked={x.enabled}
                     onCheckedChange={(enabled) =>
                       setItems((a) =>
@@ -180,14 +192,16 @@ export default function Watchlist() {
                       {x.keyword}
                     </div>
                     <div className="mt-1 text-xs text-zinc-600">
-                      Matches name, description, README summary and topics
+                      {zh
+                        ? '匹配仓库名、项目简介、README 摘要和主题标签'
+                        : 'Matches name, description, README summary and topics'}
                     </div>
                   </div>
                   <Badge className="bg-white/[.04] mono text-[10px] text-zinc-500">
-                    {x.count} REPOS
+                    {x.count} {zh ? '个仓库' : 'REPOS'}
                   </Badge>
                   <button
-                    aria-label={`Remove ${x.keyword}`}
+                    aria-label={`${zh ? '删除' : 'Remove'} ${x.keyword}`}
                     className="p-2 text-zinc-700 hover:text-rose-400"
                     onClick={() => setItems((a) => a.filter((_, j) => j !== i))}
                   >
@@ -199,22 +213,30 @@ export default function Watchlist() {
           </section>
           <aside className="space-y-4">
             <div className="panel p-5">
-              <h2 className="text-sm font-medium">Monitor health</h2>
+              <h2 className="text-sm font-medium">
+                {zh ? '监控状态' : 'Monitor health'}
+              </h2>
               <div className="mt-5 space-y-4">
                 <div className="flex justify-between text-xs">
-                  <span className="text-zinc-500">Active</span>
+                  <span className="text-zinc-500">
+                    {zh ? '启用' : 'Active'}
+                  </span>
                   <span className="mono text-emerald-300">
                     {items.filter((x) => x.enabled).length}
                   </span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-zinc-500">Paused</span>
+                  <span className="text-zinc-500">
+                    {zh ? '暂停' : 'Paused'}
+                  </span>
                   <span className="mono text-zinc-300">
                     {items.filter((x) => !x.enabled).length}
                   </span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-zinc-500">Matches today</span>
+                  <span className="text-zinc-500">
+                    {zh ? '今日匹配' : 'Matches today'}
+                  </span>
                   <span className="mono text-cyan-300">
                     {matches.reduce((a, b) => a + b.count, 0)}
                   </span>
@@ -223,11 +245,13 @@ export default function Watchlist() {
             </div>
             <div className="rounded-lg border border-cyan-300/15 bg-cyan-300/[.045] p-5">
               <Eye className="size-4 text-cyan-300" />
-              <h2 className="mt-4 text-sm font-medium">How matching works</h2>
+              <h2 className="mt-4 text-sm font-medium">
+                {zh ? '匹配方式' : 'How matching works'}
+              </h2>
               <p className="mt-2 text-xs leading-5 text-zinc-500">
-                Enabled keywords are included in discovery queries and checked
-                against repository metadata. New matches enter the ranking
-                pipeline automatically.
+                {zh
+                  ? '启用的关键词会加入 GitHub 发现查询，并与仓库元数据进行匹配。发现新项目后，会自动进入机会评分与排序流程。'
+                  : 'Enabled keywords are included in discovery queries and checked against repository metadata. New matches enter the ranking pipeline automatically.'}
               </p>
             </div>
           </aside>

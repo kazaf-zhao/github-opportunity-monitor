@@ -45,7 +45,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { repositories, signalStyles, type Repo } from '@/lib/repositories';
+import {
+  repositories,
+  signalStyles,
+  signalZh,
+  type Repo,
+} from '@/lib/repositories';
 const categories = [
   'All',
   'AI',
@@ -58,7 +63,26 @@ const categories = [
   'Infrastructure',
   'Productivity',
 ];
-function Logo() {
+const categoryZh: Record<string, string> = {
+  All: '全部',
+  AI: '人工智能',
+  Agents: '智能体',
+  MCP: 'MCP',
+  'Developer Tools': '开发工具',
+  Crypto: '加密/Web3',
+  Trading: '交易',
+  Data: '数据',
+  Infrastructure: '基础设施',
+  Productivity: '效率工具',
+};
+const sortZh: Record<string, string> = {
+  'Opportunity Score': '机会评分',
+  '24h Star Growth': '24 小时 Star 增长',
+  '7d Star Growth': '7 天 Star 增长',
+  'Total Stars': 'Star 总数',
+  'Repository Age': '仓库年龄',
+};
+function Logo({ zh }: { zh: boolean }) {
   return (
     <div className="flex items-center gap-3">
       <div className="grid size-8 place-items-center rounded-lg border border-cyan-300/25 bg-cyan-300/10">
@@ -66,7 +90,7 @@ function Logo() {
       </div>
       <div>
         <div className="text-[13px] font-semibold tracking-wide">
-          OPPORTUNITY
+          {zh ? '机会雷达' : 'OPPORTUNITY'}
         </div>
         <div className="mono text-[9px] tracking-[.22em] text-zinc-500">
           GITHUB MONITOR
@@ -75,7 +99,7 @@ function Logo() {
     </div>
   );
 }
-function Sidebar({ mobile = false }: { mobile?: boolean }) {
+function Sidebar({ mobile = false, zh }: { mobile?: boolean; zh: boolean }) {
   return (
     <aside
       className={
@@ -85,55 +109,55 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
       }
     >
       <div className="flex h-[68px] items-center border-b border-white/[.07] px-5">
-        <Logo />
+        <Logo zh={zh} />
       </div>
       <nav className="space-y-1 px-3 py-5 text-sm">
         <div className="mb-2 px-3 mono text-[10px] uppercase tracking-[.18em] text-zinc-600">
-          Workspace
+          {zh ? '工作台' : 'Workspace'}
         </div>
         <Link
           className="flex items-center gap-3 rounded-md border border-cyan-400/10 bg-cyan-400/[.08] px-3 py-2.5 font-medium text-cyan-200"
           href="/"
         >
           <LayoutDashboard className="size-4" />
-          Discover
+          {zh ? '发现' : 'Discover'}
           <span className="ml-auto rounded bg-cyan-300/15 px-1.5 mono text-[10px]">
             42
           </span>
         </Link>
         <Link className="nav-item" href="/watchlist">
           <BookMarked className="size-4" />
-          Watchlist
+          {zh ? '关键词监控' : 'Watchlist'}
         </Link>
         <button className="nav-item w-full">
           <Zap className="size-4" />
-          Signals
+          {zh ? '机会信号' : 'Signals'}
         </button>
         <button className="nav-item w-full">
           <History className="size-4" />
-          Snapshot history
+          {zh ? '历史快照' : 'Snapshot history'}
         </button>
         <div className="mb-2 mt-7 px-3 mono text-[10px] uppercase tracking-[.18em] text-zinc-600">
-          System
+          {zh ? '系统' : 'System'}
         </div>
         <button className="nav-item w-full">
           <Database className="size-4" />
-          Collectors
+          {zh ? '数据采集' : 'Collectors'}
         </button>
         <button className="nav-item w-full">
           <Settings className="size-4" />
-          Settings
+          {zh ? '设置' : 'Settings'}
         </button>
       </nav>
       <div className="absolute inset-x-3 bottom-4 rounded-lg border border-white/[.07] bg-white/[.025] p-3">
         <div className="mb-2 flex items-center gap-2 text-xs text-zinc-300">
           <span className="size-2 rounded-full bg-emerald-400" />
-          All systems operational
+          {zh ? '系统运行正常' : 'All systems operational'}
         </div>
         <div className="mono text-[10px] leading-5 text-zinc-600">
-          Last snapshot 4m ago
+          {zh ? '最近快照：4 分钟前' : 'Last snapshot 4m ago'}
           <br />
-          1,284 repos monitored
+          {zh ? '正在监控 1,284 个仓库' : '1,284 repos monitored'}
         </div>
       </div>
     </aside>
@@ -178,7 +202,7 @@ function Score({ n }: { n: number }) {
     </div>
   );
 }
-function Row({ r, i }: { r: Repo; i: number }) {
+function Row({ r, i, zh }: { r: Repo; i: number; zh: boolean }) {
   return (
     <TableRow className="group border-white/[.055] hover:bg-white/[.025]">
       <TableCell className="pl-4 mono text-xs text-zinc-600">
@@ -193,7 +217,7 @@ function Row({ r, i }: { r: Repo; i: number }) {
             <div className="flex items-center gap-2">
               <Link
                 className="font-medium hover:text-cyan-300"
-                href={`/repo/${r.owner}/${r.name}`}
+                href={`/repo/${r.owner}/${r.name}${zh ? '' : '?lang=en'}`}
               >
                 {r.owner}
                 <span className="text-zinc-600">/</span>
@@ -202,7 +226,7 @@ function Row({ r, i }: { r: Repo; i: number }) {
               <ArrowUpRight className="size-3 text-zinc-600" />
             </div>
             <p className="mt-0.5 max-w-[380px] truncate text-xs text-zinc-500">
-              {r.description}
+              {zh ? r.descriptionZh : r.description}
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {r.signals.map((s) => (
@@ -210,7 +234,7 @@ function Row({ r, i }: { r: Repo; i: number }) {
                   className={`h-5 rounded-[4px] px-1.5 mono text-[9px] ${signalStyles[s]}`}
                   key={s}
                 >
-                  {s}
+                  {zh ? signalZh[s] : s}
                 </Badge>
               ))}
             </div>
@@ -226,7 +250,7 @@ function Row({ r, i }: { r: Repo; i: number }) {
           <span className="text-[10px] text-zinc-600">/hr</span>
         </div>
         <div className="mt-1 mono text-[10px] text-emerald-400">
-          +{r.stars24h.toLocaleString()} today
+          +{r.stars24h.toLocaleString()} {zh ? '今日' : 'today'}
         </div>
       </TableCell>
       <TableCell className="hidden xl:table-cell">
@@ -255,19 +279,20 @@ function Row({ r, i }: { r: Repo; i: number }) {
         </div>
         <div className="mt-1 flex items-center gap-1.5 mono text-[10px] text-zinc-600">
           <CircleDot className="size-3" />
-          {r.issues} open
+          {r.issues} {zh ? '待处理' : 'open'}
         </div>
       </TableCell>
       <TableCell className="hidden xl:table-cell">
         <div className="text-xs text-zinc-400">{r.language}</div>
         <div className="mt-1 mono text-[10px] text-zinc-600">
-          {r.age} days old
+          {r.age} {zh ? '天' : 'days old'}
         </div>
       </TableCell>
     </TableRow>
   );
 }
 export default function Home() {
+  const [zh, setZh] = useState(true);
   const [cat, setCat] = useState('All'),
     [sort, setSort] = useState('Opportunity Score'),
     [q, setQ] = useState('');
@@ -294,14 +319,14 @@ export default function Home() {
   );
   return (
     <div className="min-h-screen">
-      <Sidebar />
+      <Sidebar zh={zh} />
       <div className="lg:pl-[228px]">
         <header className="sticky top-0 z-20 flex h-[68px] items-center border-b border-white/[.07] bg-[#0b0d12]/90 px-4 backdrop-blur-xl sm:px-6">
           <Sheet>
             <SheetTrigger
               render={
                 <Button
-                  aria-label="Open navigation"
+                  aria-label={zh ? '打开导航' : 'Open navigation'}
                   className="mr-3 lg:hidden"
                   size="icon"
                   variant="ghost"
@@ -314,8 +339,10 @@ export default function Home() {
               className="w-[240px] border-white/10 bg-[#080a0e] p-0"
               side="left"
             >
-              <SheetTitle className="sr-only">Navigation</SheetTitle>
-              <Sidebar mobile />
+              <SheetTitle className="sr-only">
+                {zh ? '导航' : 'Navigation'}
+              </SheetTitle>
+              <Sidebar mobile zh={zh} />
             </SheetContent>
           </Sheet>
           <div className="relative max-w-md flex-1">
@@ -323,7 +350,11 @@ export default function Home() {
             <Input
               className="h-9 border-white/[.08] bg-white/[.035] pl-9"
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search repositories, topics, owners…"
+              placeholder={
+                zh
+                  ? '搜索仓库、主题或作者…'
+                  : 'Search repositories, topics, owners…'
+              }
               value={q}
             />
             <span className="absolute right-2 top-2 hidden items-center gap-1 mono text-[9px] text-zinc-600 sm:flex">
@@ -331,8 +362,14 @@ export default function Home() {
             </span>
           </div>
           <div className="ml-auto flex items-center gap-2">
+            <button
+              className="rounded-md border border-white/10 bg-white/[.03] px-2.5 py-1.5 mono text-[10px] text-zinc-400 hover:text-cyan-200"
+              onClick={() => setZh((value) => !value)}
+            >
+              {zh ? 'EN' : '中文'}
+            </button>
             <span className="mr-2 hidden mono text-[10px] text-emerald-400 md:block">
-              ● LIVE DATA
+              ● {zh ? '演示数据' : 'DEMO DATA'}
             </span>
             <Button size="icon" variant="ghost">
               <RefreshCw className="size-4" />
@@ -349,21 +386,25 @@ export default function Home() {
           <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-end">
             <div>
               <div className="mb-2 mono text-[10px] uppercase tracking-[.2em] text-cyan-400">
-                — Market scan / Live
+                — {zh ? '机会扫描 / 实时排序' : 'Market scan / Live'}
               </div>
               <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-                Projects taking off{' '}
-                <span className="font-normal text-zinc-600">right now</span>
+                {zh ? '正在起飞的 GitHub 项目' : 'Projects taking off '}
+                {!zh && (
+                  <span className="font-normal text-zinc-600">right now</span>
+                )}
               </h1>
               <p className="mt-1.5 text-sm text-zinc-500">
-                Traction anomalies ranked from 1,284 monitored repositories.
+                {zh
+                  ? '从 1,284 个监控仓库中识别增长异常，越早发现越有价值。'
+                  : 'Traction anomalies ranked from 1,284 monitored repositories.'}
               </p>
             </div>
             <div className="grid grid-cols-3 divide-x divide-white/[.07] panel px-1 py-2">
               {[
-                ['42', 'Breakouts'],
-                ['+18.6%', 'Velocity'],
-                ['7', 'New today'],
+                ['42', zh ? '爆发项目' : 'Breakouts'],
+                ['+18.6%', zh ? '增长速度' : 'Velocity'],
+                ['7', zh ? '今日新增' : 'New today'],
               ].map((x) => (
                 <div className="px-4" key={x[1]}>
                   <div className="mono text-lg font-semibold text-zinc-200">
@@ -381,19 +422,25 @@ export default function Home() {
               [
                 Flame,
                 '42',
-                'Repositories in breakout territory',
+                zh
+                  ? '进入爆发区间的仓库'
+                  : 'Repositories in breakout territory',
                 'text-cyan-300',
               ],
               [
                 Gauge,
-                '9.4 stars/hr',
-                'Median velocity across top 10',
+                zh ? '9.4 Star/小时' : '9.4 stars/hr',
+                zh
+                  ? '前十项目的 Star 速度中位数'
+                  : 'Median velocity across top 10',
                 'text-violet-300',
               ],
               [
                 Activity,
                 '98.7%',
-                'Snapshot coverage in the last hour',
+                zh
+                  ? '最近一小时的快照覆盖率'
+                  : 'Snapshot coverage in the last hour',
                 'text-emerald-300',
               ],
             ].map(([Icon, n, l, c]: any) => (
@@ -411,15 +458,17 @@ export default function Home() {
               <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <div className="flex items-center gap-2">
                   <Binoculars className="size-4 text-cyan-300" />
-                  <h2 className="text-sm font-medium">Opportunity feed</h2>
+                  <h2 className="text-sm font-medium">
+                    {zh ? '机会榜单' : 'Opportunity feed'}
+                  </h2>
                   <Badge className="bg-white/[.05] mono text-[10px] text-zinc-500">
-                    {rows.length} MATCHES
+                    {rows.length} {zh ? '个结果' : 'MATCHES'}
                   </Badge>
                 </div>
                 <div className="flex gap-2">
                   <label className="flex items-center gap-2 rounded-md border border-white/[.07] bg-black/10 px-3 text-xs text-zinc-500">
                     <Filter className="size-3" />
-                    Sort by
+                    {zh ? '排序' : 'Sort by'}
                     <select
                       className="h-9 bg-transparent text-zinc-200 outline-none"
                       onChange={(e) => setSort(e.target.value)}
@@ -432,7 +481,9 @@ export default function Home() {
                         'Total Stars',
                         'Repository Age',
                       ].map((x) => (
-                        <option key={x}>{x}</option>
+                        <option key={x} value={x}>
+                          {zh ? sortZh[x] : x}
+                        </option>
                       ))}
                     </select>
                     <ChevronDown className="size-3" />
@@ -443,7 +494,7 @@ export default function Home() {
                       variant="outline"
                     >
                       <Plus />
-                      Create monitor
+                      {zh ? '新建监控' : 'Create monitor'}
                     </Button>
                   </Link>
                 </div>
@@ -455,7 +506,7 @@ export default function Home() {
                     key={x}
                     onClick={() => setCat(x)}
                   >
-                    {x}
+                    {zh ? categoryZh[x] : x}
                   </button>
                 ))}
               </div>
@@ -465,27 +516,29 @@ export default function Home() {
                 <TableHeader>
                   <TableRow className="border-white/[.07] bg-black/10">
                     <TableHead>#</TableHead>
-                    <TableHead>Repository</TableHead>
-                    <TableHead>Opportunity</TableHead>
-                    <TableHead>Star velocity</TableHead>
+                    <TableHead>
+                      {zh ? '仓库 / 中文简介' : 'Repository'}
+                    </TableHead>
+                    <TableHead>{zh ? '机会评分' : 'Opportunity'}</TableHead>
+                    <TableHead>{zh ? 'Star 速度' : 'Star velocity'}</TableHead>
                     <TableHead className="hidden xl:table-cell">
-                      7d trend
+                      {zh ? '7 天趋势' : '7d trend'}
                     </TableHead>
-                    <TableHead>Stars</TableHead>
+                    <TableHead>Star</TableHead>
                     <TableHead className="hidden 2xl:table-cell">
-                      Growth
+                      {zh ? '增长' : 'Growth'}
                     </TableHead>
                     <TableHead className="hidden 2xl:table-cell">
-                      Community
+                      {zh ? '社区' : 'Community'}
                     </TableHead>
                     <TableHead className="hidden xl:table-cell">
-                      Language / age
+                      {zh ? '语言 / 年龄' : 'Language / age'}
                     </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {rows.map((r, i) => (
-                    <Row i={i + 1} key={r.name} r={r} />
+                    <Row i={i + 1} key={r.name} r={r} zh={zh} />
                   ))}
                 </TableBody>
               </Table>
@@ -493,12 +546,18 @@ export default function Home() {
             {!rows.length && (
               <div className="py-20 text-center text-sm text-zinc-500">
                 <Search className="mx-auto mb-3" />
-                No repositories match this view
+                {zh
+                  ? '没有符合当前条件的仓库'
+                  : 'No repositories match this view'}
               </div>
             )}
             <div className="flex justify-between border-t border-white/[.07] px-5 py-3 text-[11px] text-zinc-600">
-              <span>Snapshot window: 30 days</span>
-              <span className="mono">UPDATED 4 MIN AGO</span>
+              <span>
+                {zh ? '历史快照窗口：30 天' : 'Snapshot window: 30 days'}
+              </span>
+              <span className="mono">
+                {zh ? '4 分钟前更新' : 'UPDATED 4 MIN AGO'}
+              </span>
             </div>
           </section>
         </main>
