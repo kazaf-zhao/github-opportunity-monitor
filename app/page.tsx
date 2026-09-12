@@ -1,56 +1,36 @@
 'use client';
-/* oxlint-disable typescript/no-explicit-any */
+
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   ArrowUpRight,
-  BellRing,
   Binoculars,
   BookMarked,
-  ChevronDown,
   CircleDot,
-  Command,
   Database,
-  Filter,
   Flame,
   Gauge,
   GitFork,
-  History,
   LayoutDashboard,
-  Menu,
-  Plus,
   RefreshCw,
   Search,
-  Settings,
   Star,
   TrendingUp,
-  Zap,
+  type LucideIcon,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import {
-  Sheet,
-  SheetContent,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  repositories,
   signalStyles,
   signalZh,
-  type Repo,
+  type RepositoryApiResponse,
+  type RepositoryOpportunity,
 } from '@/lib/repositories';
+
 const categories = [
   'All',
   'AI',
@@ -75,6 +55,24 @@ const categoryZh: Record<string, string> = {
   Infrastructure: '基础设施',
   Productivity: '效率工具',
 };
+const categoryTerms: Record<string, string[]> = {
+  AI: ['ai', 'llm', 'rag', 'openai', 'claude'],
+  Agents: ['agent', 'computer-use'],
+  MCP: ['mcp'],
+  'Developer Tools': ['developer', 'devtool', 'sdk', 'cli'],
+  Crypto: ['crypto', 'web3', 'stablecoin', 'blockchain'],
+  Trading: ['trading', 'prediction-market', 'polymarket'],
+  Data: ['data', 'database', 'vector'],
+  Infrastructure: ['infrastructure', 'cloud', 'kubernetes'],
+  Productivity: ['productivity', 'automation'],
+};
+const sortOptions = [
+  'Opportunity Score',
+  '24h Star Growth',
+  '7d Star Growth',
+  'Total Stars',
+  'Repository Age',
+];
 const sortZh: Record<string, string> = {
   'Opportunity Score': '机会评分',
   '24h Star Growth': '24 小时 Star 增长',
@@ -82,34 +80,105 @@ const sortZh: Record<string, string> = {
   'Total Stars': 'Star 总数',
   'Repository Age': '仓库年龄',
 };
-function Logo({ zh }: { zh: boolean }) {
+
+function relativeTime(value: string | null, zh: boolean) {
+  if (!value) return zh ? '等待首次快照' : 'Waiting for first snapshot';
+  const minutes = Math.max(
+    0,
+    Math.floor((Date.now() - Date.parse(value)) / 60_000),
+  );
+  if (minutes < 60) return zh ? `${minutes} 分钟前` : `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return zh ? `${hours} 小时前` : `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return zh ? `${days} 天前` : `${days}d ago`;
+}
+
+function Spark({ data }: { data: number[] }) {
+  if (data.length < 2)
+    return <span className="text-[10px] text-zinc-600">历史数据采集中</span>;
+  const max = Math.max(...data),
+    min = Math.min(...data);
+  const points = data
+    .map(
+      (value, index) =>
+        `${(index / (data.length - 1)) * 104},${28 - ((value - min) / (max - min || 1)) * 24}`,
+    )
+    .join(' ');
   return (
-    <div className="flex items-center gap-3">
-      <div className="grid size-8 place-items-center rounded-lg border border-cyan-300/25 bg-cyan-300/10">
-        <TrendingUp className="size-4 text-cyan-300" />
-      </div>
-      <div>
-        <div className="text-[13px] font-semibold tracking-wide">
-          {zh ? '机会雷达' : 'OPPORTUNITY'}
-        </div>
-        <div className="mono text-[9px] tracking-[.22em] text-zinc-500">
-          GITHUB MONITOR
-        </div>
-      </div>
+    <svg
+      aria-label="真实 Star 快照趋势"
+      height="30"
+      viewBox="0 0 104 30"
+      width="104"
+    >
+      <polyline
+        fill="none"
+        points={points}
+        stroke="#67e8f9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function Score({ value }: { value: number }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <strong
+        className={`mono text-2xl ${value >= 80 ? 'text-cyan-300' : value >= 60 ? 'text-emerald-300' : 'text-amber-300'}`}
+      >
+        {value}
+      </strong>
+      <Progress
+        className="hidden h-1 w-10 bg-white/10 xl:block"
+        value={value}
+      />
     </div>
   );
 }
-function Sidebar({ mobile = false, zh }: { mobile?: boolean; zh: boolean }) {
+
+function Growth({ value, suffix }: { value: number | null; suffix: string }) {
+  return value === null ? (
+    <span className="text-[10px] text-zinc-600">采集中</span>
+  ) : (
+    <span className="mono text-xs text-emerald-300">
+      {value >= 0 ? '+' : ''}
+      {value.toLocaleString()} <span className="text-zinc-600">{suffix}</span>
+    </span>
+  );
+}
+
+function Sidebar({
+  response,
+  zh,
+}: {
+  response: RepositoryApiResponse | null;
+  zh: boolean;
+}) {
+  const status = response?.meta.data_status ?? 'WAITING';
+  const statusColor =
+    status === 'LIVE'
+      ? 'bg-emerald-400'
+      : status === 'RECENT'
+        ? 'bg-amber-400'
+        : 'bg-rose-400';
   return (
-    <aside
-      className={
-        mobile
-          ? 'h-full bg-[#080a0e]'
-          : 'fixed inset-y-0 left-0 z-30 hidden w-[228px] border-r border-white/[.07] bg-[#080a0e] lg:block'
-      }
-    >
-      <div className="flex h-[68px] items-center border-b border-white/[.07] px-5">
-        <Logo zh={zh} />
+    <aside className="fixed inset-y-0 left-0 z-30 hidden w-[228px] border-r border-white/[.07] bg-[#080a0e] lg:block">
+      <div className="flex h-[68px] items-center gap-3 border-b border-white/[.07] px-5">
+        <div className="grid size-8 place-items-center rounded-lg border border-cyan-300/25 bg-cyan-300/10">
+          <TrendingUp className="size-4 text-cyan-300" />
+        </div>
+        <div>
+          <div className="text-[13px] font-semibold">
+            {zh ? '机会雷达' : 'OPPORTUNITY'}
+          </div>
+          <div className="mono text-[9px] tracking-[.2em] text-zinc-500">
+            GITHUB MONITOR
+          </div>
+        </div>
       </div>
       <nav className="space-y-1 px-3 py-5 text-sm">
         <div className="mb-2 px-3 mono text-[10px] uppercase tracking-[.18em] text-zinc-600">
@@ -121,335 +190,310 @@ function Sidebar({ mobile = false, zh }: { mobile?: boolean; zh: boolean }) {
         >
           <LayoutDashboard className="size-4" />
           {zh ? '发现' : 'Discover'}
-          <span className="ml-auto rounded bg-cyan-300/15 px-1.5 mono text-[10px]">
-            42
+          <span className="ml-auto mono text-[10px]">
+            {response?.data.length ?? '—'}
           </span>
         </Link>
         <Link className="nav-item" href="/watchlist">
           <BookMarked className="size-4" />
           {zh ? '关键词监控' : 'Watchlist'}
         </Link>
-        <button className="nav-item w-full">
-          <Zap className="size-4" />
-          {zh ? '机会信号' : 'Signals'}
-        </button>
-        <button className="nav-item w-full">
-          <History className="size-4" />
-          {zh ? '历史快照' : 'Snapshot history'}
-        </button>
-        <div className="mb-2 mt-7 px-3 mono text-[10px] uppercase tracking-[.18em] text-zinc-600">
-          {zh ? '系统' : 'System'}
-        </div>
-        <button className="nav-item w-full">
+        <Link className="nav-item" href="/admin/data-status">
           <Database className="size-4" />
           {zh ? '数据采集' : 'Collectors'}
-        </button>
-        <button className="nav-item w-full">
-          <Settings className="size-4" />
-          {zh ? '设置' : 'Settings'}
-        </button>
+        </Link>
       </nav>
       <div className="absolute inset-x-3 bottom-4 rounded-lg border border-white/[.07] bg-white/[.025] p-3">
         <div className="mb-2 flex items-center gap-2 text-xs text-zinc-300">
-          <span className="size-2 rounded-full bg-emerald-400" />
-          {zh ? '系统运行正常' : 'All systems operational'}
+          <span className={`size-2 rounded-full ${statusColor}`} />
+          {status === 'LIVE' ? (zh ? '系统运行正常' : 'System live') : status}
         </div>
         <div className="mono text-[10px] leading-5 text-zinc-600">
-          {zh ? '最近快照：4 分钟前' : 'Last snapshot 4m ago'}
+          {zh ? '最近快照：' : 'Last snapshot: '}
+          {relativeTime(response?.meta.last_snapshot_at ?? null, zh)}
           <br />
-          {zh ? '正在监控 1,284 个仓库' : '1,284 repos monitored'}
+          {zh ? '正在监控：' : 'Monitoring: '}
+          {response?.meta.repository_count?.toLocaleString() ?? '—'}{' '}
+          {zh ? '个仓库' : 'repositories'}
         </div>
       </div>
     </aside>
   );
 }
-function Spark({ data }: { data: number[] }) {
-  const max = Math.max(...data),
-    min = Math.min(...data);
-  const pts = data
-    .map(
-      (v, i) =>
-        `${(i / (data.length - 1)) * 104},${28 - ((v - min) / (max - min || 1)) * 24}`,
-    )
-    .join(' ');
+
+function RepoRow({
+  repo,
+  index,
+  zh,
+}: {
+  repo: RepositoryOpportunity;
+  index: number;
+  zh: boolean;
+}) {
   return (
-    <svg
-      aria-label="Seven day trend"
-      height="30"
-      viewBox="0 0 104 30"
-      width="104"
-    >
-      <polyline
-        fill="none"
-        points={pts}
-        stroke="#67e8f9"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-    </svg>
-  );
-}
-function Score({ n }: { n: number }) {
-  return (
-    <div className="flex items-center gap-2.5">
-      <strong
-        className={`mono text-2xl ${n >= 88 ? 'text-cyan-300' : n >= 75 ? 'text-emerald-300' : 'text-amber-300'}`}
+    <tr className="border-b border-white/[.055] hover:bg-white/[.025]">
+      <td className="p-4 mono text-xs text-zinc-600">
+        {String(index).padStart(2, '0')}
+      </td>
+      <td
+        aria-label={zh ? '仓库' : 'Repository'}
+        className="min-w-[320px] py-4"
       >
-        {n}
-      </strong>
-      <Progress className="hidden h-1 w-10 bg-white/10 xl:block" value={n} />
-    </div>
-  );
-}
-function Row({ r, i, zh }: { r: Repo; i: number; zh: boolean }) {
-  return (
-    <TableRow className="group border-white/[.055] hover:bg-white/[.025]">
-      <TableCell className="pl-4 mono text-xs text-zinc-600">
-        {String(i).padStart(2, '0')}
-      </TableCell>
-      <TableCell className="min-w-[320px] py-4">
         <div className="flex gap-3">
           <div className="grid size-9 shrink-0 place-items-center rounded-md border border-white/[.08] bg-zinc-800 mono text-xs font-bold">
-            {r.owner.slice(0, 2).toUpperCase()}
+            {repo.owner.slice(0, 2).toUpperCase()}
           </div>
           <div>
             <div className="flex items-center gap-2">
               <Link
                 className="font-medium hover:text-cyan-300"
-                href={`/repo/${r.owner}/${r.name}${zh ? '' : '?lang=en'}`}
+                href={`/repo/${repo.owner}/${repo.name}${zh ? '' : '?lang=en'}`}
               >
-                {r.owner}
-                <span className="text-zinc-600">/</span>
-                {r.name}
+                {repo.full_name}
               </Link>
-              <ArrowUpRight className="size-3 text-zinc-600" />
+              <a
+                aria-label={`${zh ? '在 GitHub 打开' : 'Open on GitHub'} ${repo.full_name}`}
+                href={repo.github_url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <ArrowUpRight className="size-3 text-zinc-600" />
+              </a>
             </div>
-            <p className="mt-0.5 max-w-[380px] truncate text-xs text-zinc-500">
-              {zh ? r.descriptionZh : r.description}
+            <p className="mt-0.5 max-w-[420px] truncate text-xs text-zinc-500">
+              {(zh && repo.description_zh) ||
+                repo.description ||
+                (zh ? 'GitHub 暂无项目简介' : 'No GitHub description')}
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {r.signals.map((s) => (
+              {repo.signals.map((signal) => (
                 <Badge
-                  className={`h-5 rounded-[4px] px-1.5 mono text-[9px] ${signalStyles[s]}`}
-                  key={s}
+                  className={`h-5 rounded-[4px] px-1.5 mono text-[9px] ${signalStyles[signal]}`}
+                  key={signal}
                 >
-                  {zh ? signalZh[s] : s}
+                  {zh ? signalZh[signal] : signal}
                 </Badge>
               ))}
             </div>
           </div>
         </div>
-      </TableCell>
-      <TableCell>
-        <Score n={r.score} />
-      </TableCell>
-      <TableCell>
+      </td>
+      <td>
+        <Score value={repo.opportunity_score} />
+      </td>
+      <td>
         <div className="mono text-sm text-cyan-300">
-          +{r.velocity.toFixed(1)}
-          <span className="text-[10px] text-zinc-600">/hr</span>
+          {repo.velocity === null ? (
+            <span className="text-[10px] text-zinc-600">采集中</span>
+          ) : (
+            <>
+              {repo.velocity >= 0 ? '+' : ''}
+              {repo.velocity.toFixed(1)}
+              <span className="text-[10px] text-zinc-600">
+                /h · {repo.velocity_source}
+              </span>
+            </>
+          )}
         </div>
-        <div className="mt-1 mono text-[10px] text-emerald-400">
-          +{r.stars24h.toLocaleString()} {zh ? '今日' : 'today'}
+        <div className="mt-1">
+          <Growth value={repo.stars_24h} suffix="24h" />
         </div>
-      </TableCell>
-      <TableCell className="hidden xl:table-cell">
-        <Spark data={r.spark} />
-      </TableCell>
-      <TableCell>
+      </td>
+      <td className="hidden xl:table-cell">
+        <Spark data={repo.spark} />
+      </td>
+      <td>
         <div className="flex items-center gap-1.5 mono text-sm">
           <Star className="size-3 text-zinc-600" />
-          {r.stars.toLocaleString()}
+          {repo.stars.toLocaleString()}
         </div>
-      </TableCell>
-      <TableCell className="hidden 2xl:table-cell">
-        <div className="mono text-xs text-emerald-300">
-          +{r.stars7d.toLocaleString()}{' '}
-          <span className="text-zinc-600">7d</span>
+      </td>
+      <td className="hidden 2xl:table-cell">
+        <div>
+          <Growth value={repo.stars_7d} suffix="7d" />
         </div>
-        <div className="mono text-xs text-zinc-400">
-          +{r.stars30d.toLocaleString()}{' '}
-          <span className="text-zinc-600">30d</span>
+        <div>
+          <Growth value={repo.stars_30d} suffix="30d" />
         </div>
-      </TableCell>
-      <TableCell className="hidden 2xl:table-cell">
+      </td>
+      <td className="hidden 2xl:table-cell">
         <div className="flex items-center gap-1.5 mono text-xs text-zinc-400">
           <GitFork className="size-3" />
-          {r.forks}
+          {repo.forks}
         </div>
         <div className="mt-1 flex items-center gap-1.5 mono text-[10px] text-zinc-600">
           <CircleDot className="size-3" />
-          {r.issues} {zh ? '待处理' : 'open'}
+          {repo.open_issues}
         </div>
-      </TableCell>
-      <TableCell className="hidden xl:table-cell">
-        <div className="text-xs text-zinc-400">{r.language}</div>
+      </td>
+      <td className="hidden xl:table-cell">
+        <div className="text-xs text-zinc-400">
+          {repo.primary_language ?? '—'}
+        </div>
         <div className="mt-1 mono text-[10px] text-zinc-600">
-          {r.age} {zh ? '天' : 'days old'}
+          {repo.repository_age_days} {zh ? '天' : 'days'}
         </div>
-      </TableCell>
-    </TableRow>
+      </td>
+    </tr>
   );
 }
+
 export default function Home() {
   const [zh, setZh] = useState(true);
-  const [cat, setCat] = useState('All'),
-    [sort, setSort] = useState('Opportunity Score'),
-    [q, setQ] = useState('');
-  const rows = useMemo(
-    () =>
-      repositories
-        .filter(
-          (r) =>
-            (cat === 'All' || r.category === cat) &&
-            JSON.stringify(r).toLowerCase().includes(q.toLowerCase()),
-        )
-        .sort((a, b) =>
-          sort === '24h Star Growth'
-            ? b.stars24h - a.stars24h
-            : sort === '7d Star Growth'
-              ? b.stars7d - a.stars7d
-              : sort === 'Total Stars'
-                ? b.stars - a.stars
-                : sort === 'Repository Age'
-                  ? a.age - b.age
-                  : b.score - a.score,
-        ),
-    [cat, sort, q],
-  );
+  const [response, setResponse] = useState<RepositoryApiResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [category, setCategory] = useState('All');
+  const [sort, setSort] = useState('Opportunity Score');
+  const [query, setQuery] = useState('');
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await fetch('/api/repositories', { cache: 'no-store' });
+      const body = (await result.json()) as RepositoryApiResponse & {
+        error?: string;
+      };
+      if (!result.ok) throw new Error(body.error || 'API error');
+      setResponse(body);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+  const rows = useMemo(() => {
+    const lowered = query.toLowerCase();
+    const values = [...(response?.data ?? [])].filter((repo) => {
+      const haystack =
+        `${repo.full_name} ${repo.description ?? ''} ${repo.description_zh ?? ''} ${repo.topics.join(' ')} ${repo.primary_language ?? ''}`.toLowerCase();
+      return (
+        haystack.includes(lowered) &&
+        (category === 'All' ||
+          categoryTerms[category].some((term) => haystack.includes(term)))
+      );
+    });
+    const nullable = (value: number | null) =>
+      value ?? Number.NEGATIVE_INFINITY;
+    return values.sort((a, b) =>
+      sort === '24h Star Growth'
+        ? nullable(b.stars_24h) - nullable(a.stars_24h)
+        : sort === '7d Star Growth'
+          ? nullable(b.stars_7d) - nullable(a.stars_7d)
+          : sort === 'Total Stars'
+            ? b.stars - a.stars
+            : sort === 'Repository Age'
+              ? a.repository_age_days - b.repository_age_days
+              : b.opportunity_score - a.opportunity_score,
+    );
+  }, [response, query, category, sort]);
+  const breakoutCount =
+    response?.data.filter((repo) => repo.signals.includes('BREAKOUT')).length ??
+    0;
+  const velocities = (
+    response?.data
+      .map((repo) => repo.velocity)
+      .filter((v): v is number => v !== null) ?? []
+  ).sort((a, b) => a - b);
+  const medianVelocity = velocities.length
+    ? velocities[Math.floor(velocities.length / 2)]
+    : null;
+
   return (
     <div className="min-h-screen">
-      <Sidebar zh={zh} />
+      <Sidebar response={response} zh={zh} />
       <div className="lg:pl-[228px]">
         <header className="sticky top-0 z-20 flex h-[68px] items-center border-b border-white/[.07] bg-[#0b0d12]/90 px-4 backdrop-blur-xl sm:px-6">
-          <Sheet>
-            <SheetTrigger
-              render={
-                <Button
-                  aria-label={zh ? '打开导航' : 'Open navigation'}
-                  className="mr-3 lg:hidden"
-                  size="icon"
-                  variant="ghost"
-                />
-              }
-            >
-              <Menu />
-            </SheetTrigger>
-            <SheetContent
-              className="w-[240px] border-white/10 bg-[#080a0e] p-0"
-              side="left"
-            >
-              <SheetTitle className="sr-only">
-                {zh ? '导航' : 'Navigation'}
-              </SheetTitle>
-              <Sidebar mobile zh={zh} />
-            </SheetContent>
-          </Sheet>
           <div className="relative max-w-md flex-1">
             <Search className="absolute left-3 top-2.5 size-4 text-zinc-600" />
             <Input
               className="h-9 border-white/[.08] bg-white/[.035] pl-9"
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(event) => setQuery(event.target.value)}
               placeholder={
                 zh
                   ? '搜索仓库、主题或作者…'
                   : 'Search repositories, topics, owners…'
               }
-              value={q}
+              value={query}
             />
-            <span className="absolute right-2 top-2 hidden items-center gap-1 mono text-[9px] text-zinc-600 sm:flex">
-              <Command className="size-3" />K
-            </span>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <button
-              className="rounded-md border border-white/10 bg-white/[.03] px-2.5 py-1.5 mono text-[10px] text-zinc-400 hover:text-cyan-200"
+              className="rounded-md border border-white/10 px-2.5 py-1.5 mono text-[10px] text-zinc-400"
               onClick={() => setZh((value) => !value)}
             >
               {zh ? 'EN' : '中文'}
             </button>
-            <span className="mr-2 hidden mono text-[10px] text-emerald-400 md:block">
-              ● {zh ? '演示数据' : 'DEMO DATA'}
-            </span>
-            <Button size="icon" variant="ghost">
-              <RefreshCw className="size-4" />
+            <Button
+              aria-label={zh ? '刷新数据' : 'Refresh data'}
+              disabled={loading}
+              onClick={() => void load()}
+              size="icon"
+              variant="ghost"
+            >
+              <RefreshCw
+                className={`size-4 ${loading ? 'animate-spin' : ''}`}
+              />
             </Button>
-            <Button size="icon" variant="ghost">
-              <BellRing className="size-4" />
-            </Button>
-            <div className="grid size-8 place-items-center rounded-full border border-white/10 bg-zinc-800 mono text-[10px]">
-              KZ
-            </div>
           </div>
         </header>
         <main className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
           <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-end">
             <div>
               <div className="mb-2 mono text-[10px] uppercase tracking-[.2em] text-cyan-400">
-                — {zh ? '机会扫描 / 实时排序' : 'Market scan / Live'}
+                —{' '}
+                {zh
+                  ? '真实 GitHub 数据 / 动态排序'
+                  : 'REAL GITHUB DATA / LIVE RANKING'}
               </div>
-              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-                {zh ? '正在起飞的 GitHub 项目' : 'Projects taking off '}
-                {!zh && (
-                  <span className="font-normal text-zinc-600">right now</span>
-                )}
+              <h1 className="text-2xl font-semibold sm:text-3xl">
+                {zh
+                  ? '正在起飞的 GitHub 项目'
+                  : 'GitHub projects taking off now'}
               </h1>
               <p className="mt-1.5 text-sm text-zinc-500">
                 {zh
-                  ? '从 1,284 个监控仓库中识别增长异常，越早发现越有价值。'
-                  : 'Traction anomalies ranked from 1,284 monitored repositories.'}
+                  ? `从 ${response?.meta.repository_count?.toLocaleString() ?? '—'} 个真实仓库中识别增长异常。`
+                  : `Traction anomalies across ${response?.meta.repository_count?.toLocaleString() ?? '—'} real repositories.`}
               </p>
             </div>
-            <div className="grid grid-cols-3 divide-x divide-white/[.07] panel px-1 py-2">
-              {[
-                ['42', zh ? '爆发项目' : 'Breakouts'],
-                ['+18.6%', zh ? '增长速度' : 'Velocity'],
-                ['7', zh ? '今日新增' : 'New today'],
-              ].map((x) => (
-                <div className="px-4" key={x[1]}>
-                  <div className="mono text-lg font-semibold text-zinc-200">
-                    {x[0]}
-                  </div>
-                  <div className="text-[10px] uppercase tracking-wider text-zinc-600">
-                    {x[1]}
-                  </div>
-                </div>
-              ))}
+            <div className="mono text-[10px] text-zinc-600">
+              {zh ? '数据更新时间：' : 'Data fetched: '}
+              {relativeTime(response?.meta.updated_at ?? null, zh)}
             </div>
           </div>
           <section className="mb-5 grid gap-3 md:grid-cols-3">
-            {[
+            {(
               [
-                Flame,
-                '42',
-                zh
-                  ? '进入爆发区间的仓库'
-                  : 'Repositories in breakout territory',
-                'text-cyan-300',
-              ],
-              [
-                Gauge,
-                zh ? '9.4 Star/小时' : '9.4 stars/hr',
-                zh
-                  ? '前十项目的 Star 速度中位数'
-                  : 'Median velocity across top 10',
-                'text-violet-300',
-              ],
-              [
-                Activity,
-                '98.7%',
-                zh
-                  ? '最近一小时的快照覆盖率'
-                  : 'Snapshot coverage in the last hour',
-                'text-emerald-300',
-              ],
-            ].map(([Icon, n, l, c]: any) => (
-              <div className="signal-card" key={l}>
-                <div className={`stat-icon bg-white/[.03] ${c}`}>
+                [
+                  Flame,
+                  String(breakoutCount),
+                  zh ? '符合真实爆发条件' : 'Verified breakouts',
+                ],
+                [
+                  Gauge,
+                  medianVelocity === null
+                    ? '采集中'
+                    : `${medianVelocity.toFixed(1)} Star/h`,
+                  zh ? '可用快照速度中位数' : 'Median observed velocity',
+                ],
+                [
+                  Activity,
+                  response?.meta.data_status ?? 'WAITING',
+                  zh ? '快照新鲜度' : 'Snapshot freshness',
+                ],
+              ] as Array<[LucideIcon, ReactNode, string]>
+            ).map(([Icon, value, label]) => (
+              <div className="signal-card" key={String(label)}>
+                <div className="stat-icon bg-white/[.03] text-cyan-300">
                   <Icon className="size-4" />
                 </div>
-                <div className="mt-5 mono text-2xl font-semibold">{n}</div>
-                <div className="mt-1 text-xs text-zinc-500">{l}</div>
+                <div className="mt-5 mono text-2xl font-semibold">{value}</div>
+                <div className="mt-1 text-xs text-zinc-500">{label}</div>
               </div>
             ))}
           </section>
@@ -462,101 +506,110 @@ export default function Home() {
                     {zh ? '机会榜单' : 'Opportunity feed'}
                   </h2>
                   <Badge className="bg-white/[.05] mono text-[10px] text-zinc-500">
-                    {rows.length} {zh ? '个结果' : 'MATCHES'}
+                    {rows.length}
                   </Badge>
                 </div>
-                <div className="flex gap-2">
-                  <label className="flex items-center gap-2 rounded-md border border-white/[.07] bg-black/10 px-3 text-xs text-zinc-500">
-                    <Filter className="size-3" />
-                    {zh ? '排序' : 'Sort by'}
-                    <select
-                      className="h-9 bg-transparent text-zinc-200 outline-none"
-                      onChange={(e) => setSort(e.target.value)}
-                      value={sort}
-                    >
-                      {[
-                        'Opportunity Score',
-                        '24h Star Growth',
-                        '7d Star Growth',
-                        'Total Stars',
-                        'Repository Age',
-                      ].map((x) => (
-                        <option key={x} value={x}>
-                          {zh ? sortZh[x] : x}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="size-3" />
-                  </label>
-                  <Link href="/watchlist">
-                    <Button
-                      className="h-9 border-white/[.08] bg-white/[.035] text-xs"
-                      variant="outline"
-                    >
-                      <Plus />
-                      {zh ? '新建监控' : 'Create monitor'}
-                    </Button>
-                  </Link>
-                </div>
+                <label className="flex items-center gap-2 text-xs text-zinc-500">
+                  {zh ? '排序' : 'Sort'}
+                  <select
+                    className="h-9 rounded-md border border-white/[.07] bg-[#11141b] px-3 text-zinc-200"
+                    onChange={(event) => setSort(event.target.value)}
+                    value={sort}
+                  >
+                    {sortOptions.map((option) => (
+                      <option key={option}>
+                        {zh ? sortZh[option] : option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
               <div className="mt-4 flex gap-1.5 overflow-x-auto">
-                {categories.map((x) => (
+                {categories.map((item) => (
                   <button
-                    className={`whitespace-nowrap rounded-md border px-3 py-1.5 text-xs ${x === cat ? 'border-cyan-300/25 bg-cyan-300/10 text-cyan-200' : 'border-white/[.06] text-zinc-500'}`}
-                    key={x}
-                    onClick={() => setCat(x)}
+                    className={`whitespace-nowrap rounded-md border px-3 py-1.5 text-xs ${item === category ? 'border-cyan-300/25 bg-cyan-300/10 text-cyan-200' : 'border-white/[.06] text-zinc-500'}`}
+                    key={item}
+                    onClick={() => setCategory(item)}
                   >
-                    {zh ? categoryZh[x] : x}
+                    {zh ? categoryZh[item] : item}
                   </button>
                 ))}
               </div>
             </div>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-white/[.07] bg-black/10">
-                    <TableHead>#</TableHead>
-                    <TableHead>
-                      {zh ? '仓库 / 中文简介' : 'Repository'}
-                    </TableHead>
-                    <TableHead>{zh ? '机会评分' : 'Opportunity'}</TableHead>
-                    <TableHead>{zh ? 'Star 速度' : 'Star velocity'}</TableHead>
-                    <TableHead className="hidden xl:table-cell">
-                      {zh ? '7 天趋势' : '7d trend'}
-                    </TableHead>
-                    <TableHead>Star</TableHead>
-                    <TableHead className="hidden 2xl:table-cell">
-                      {zh ? '增长' : 'Growth'}
-                    </TableHead>
-                    <TableHead className="hidden 2xl:table-cell">
-                      {zh ? '社区' : 'Community'}
-                    </TableHead>
-                    <TableHead className="hidden xl:table-cell">
-                      {zh ? '语言 / 年龄' : 'Language / age'}
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((r, i) => (
-                    <Row i={i + 1} key={r.name} r={r} zh={zh} />
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-            {!rows.length && (
+            {error ? (
+              <div className="py-20 text-center">
+                <p className="text-sm text-rose-300">{error}</p>
+                <Button
+                  className="mt-4"
+                  onClick={() => void load()}
+                  variant="outline"
+                >
+                  {zh ? '重试' : 'Retry'}
+                </Button>
+              </div>
+            ) : loading && !response ? (
+              <div className="py-20 text-center text-sm text-zinc-500">
+                <RefreshCw className="mx-auto mb-3 animate-spin" />
+                {zh
+                  ? '正在读取 Supabase 真实数据…'
+                  : 'Loading real Supabase data…'}
+              </div>
+            ) : rows.length === 0 ? (
               <div className="py-20 text-center text-sm text-zinc-500">
                 <Search className="mx-auto mb-3" />
-                {zh
-                  ? '没有符合当前条件的仓库'
-                  : 'No repositories match this view'}
+                {response?.data.length
+                  ? zh
+                    ? '没有符合当前筛选条件的仓库'
+                    : 'No matching repositories'
+                  : zh
+                    ? '数据库还没有仓库，请前往数据采集页运行首次发现。'
+                    : 'No repositories yet. Run discovery from Data Status.'}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b border-white/[.07] bg-black/10 text-xs text-zinc-500">
+                      <th className="p-4">#</th>
+                      <th>{zh ? '仓库 / 中文简介' : 'Repository'}</th>
+                      <th>{zh ? '机会评分' : 'Opportunity'}</th>
+                      <th>{zh ? 'Star 速度' : 'Velocity'}</th>
+                      <th className="hidden xl:table-cell">
+                        {zh ? '真实趋势' : 'Observed trend'}
+                      </th>
+                      <th>Star</th>
+                      <th className="hidden 2xl:table-cell">
+                        {zh ? '增长' : 'Growth'}
+                      </th>
+                      <th className="hidden 2xl:table-cell">
+                        {zh ? '社区' : 'Community'}
+                      </th>
+                      <th className="hidden xl:table-cell">
+                        {zh ? '语言 / 年龄' : 'Language / age'}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((repo, index) => (
+                      <RepoRow
+                        index={index + 1}
+                        key={repo.id}
+                        repo={repo}
+                        zh={zh}
+                      />
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
             <div className="flex justify-between border-t border-white/[.07] px-5 py-3 text-[11px] text-zinc-600">
               <span>
-                {zh ? '历史快照窗口：30 天' : 'Snapshot window: 30 days'}
+                {zh
+                  ? '增长仅来自已持久化快照'
+                  : 'Growth uses persisted snapshots only'}
               </span>
               <span className="mono">
-                {zh ? '4 分钟前更新' : 'UPDATED 4 MIN AGO'}
+                {relativeTime(response?.meta.last_snapshot_at ?? null, zh)}
               </span>
             </div>
           </section>

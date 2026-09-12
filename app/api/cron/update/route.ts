@@ -1,1 +1,1 @@
-export{GET}from'../snapshots/route';
+export { GET } from '../snapshots/route';

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { repositories } from '@/lib/repositories';
+import type { RepositoryOpportunity } from '@/lib/repositories';
 const defaults = [
   'AI Agent',
   'MCP',
@@ -35,10 +35,21 @@ declare global {
 }
 export default function Watchlist() {
   const [zh, setZh] = useState(true);
+  const [repositories, setRepositories] = useState<RepositoryOpportunity[]>([]);
   const [items, setItems] = useState(() =>
     defaults.map((keyword, i) => ({ keyword, enabled: i < 11 })),
   );
   const [draft, setDraft] = useState('');
+  useEffect(() => {
+    void fetch('/api/repositories?limit=500', { cache: 'no-store' })
+      .then((response) => response.json())
+      .then((body) =>
+        setRepositories(
+          (body as { data?: RepositoryOpportunity[] }).data ?? [],
+        ),
+      )
+      .catch(() => setRepositories([]));
+  }, []);
   const add = useCallback(
     (value = draft) => {
       const keyword = value.trim();
@@ -99,7 +110,7 @@ export default function Watchlist() {
             .includes(x.keyword.toLowerCase().replace(' agent', '')),
         ).length,
       })),
-    [items],
+    [items, repositories],
   );
   return (
     <main className="min-h-screen bg-[#0b0d12] p-4 sm:p-8">

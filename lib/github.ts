@@ -1,5 +1,20 @@
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const cache = new Map<string, { expires: number; value: unknown }>();
+export type GitHubRateLimit = {
+  remaining: number | null;
+  limit: number | null;
+  reset: string | null;
+  resource: string | null;
+};
+let lastRateLimit: GitHubRateLimit = {
+  remaining: null,
+  limit: null,
+  reset: null,
+  resource: null,
+};
+export function getLastGitHubRateLimit() {
+  return lastRateLimit;
+}
 export async function githubRequest<T>(
   path: string,
   init: RequestInit = {},
@@ -25,6 +40,16 @@ export async function githubRequest<T>(
       reset: res.headers.get('x-ratelimit-reset'),
       resource: res.headers.get('x-ratelimit-resource'),
     });
+    lastRateLimit = {
+      remaining: Number(res.headers.get('x-ratelimit-remaining')) || 0,
+      limit: Number(res.headers.get('x-ratelimit-limit')) || 0,
+      reset: res.headers.get('x-ratelimit-reset')
+        ? new Date(
+            Number(res.headers.get('x-ratelimit-reset')) * 1000,
+          ).toISOString()
+        : null,
+      resource: res.headers.get('x-ratelimit-resource'),
+    };
     if (res.ok) {
       const value = (await res.json()) as T;
       cache.set(key, { expires: Date.now() + ttlMs, value });
@@ -55,10 +80,25 @@ export type GitHubRepository = {
   created_at: string;
   pushed_at: string;
 };
-export async function searchRepositories(query: string, page = 1) {
+export async function searchRepositories(
+  query: string,
+  page = 1,
+  sort: 'stars' | 'updated' = 'stars',
+) {
   return githubRequest<{ items: GitHubRepository[] }>(
-    `/search/repositories?q=${encodeURIComponent(query)}&sort=stars&order=desc&per_page=50&page=${page}`,
+    `/search/repositories?q=${encodeURIComponent(query)}&sort=${sort}&order=desc&per_page=50&page=${page}`,
     {},
     120000,
   );
+}
+
+export async function checkGitHub() {
+  const result = await githubRequest<{
+    resources: { core: { remaining: number; limit: number; reset: number } };
+  }>('/rate_limit', {}, 30_000);
+  return {
+    remaining: result.resources.core.remaining,
+    limit: result.resources.core.limit,
+    reset: new Date(result.resources.core.reset * 1000).toISOString(),
+  };
 }
