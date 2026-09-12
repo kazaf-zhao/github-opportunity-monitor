@@ -1,0 +1,238 @@
+'use client';
+import Link from 'next/link';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, Eye, Plus, Search, Trash2, TrendingUp } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
+import { repositories } from '@/lib/repositories';
+const defaults = [
+  'AI Agent',
+  'MCP',
+  'Browser Agent',
+  'Trading Agent',
+  'Prediction Market',
+  'Polymarket',
+  'Crypto AI',
+  'Stablecoin',
+  'RAG',
+  'Voice AI',
+  'Computer Use',
+  'OpenAI',
+  'Claude',
+  'Local AI',
+];
+declare global {
+  interface Document {
+    modelContext?: {
+      registerTool: (
+        tool: unknown,
+        options?: { signal: AbortSignal },
+      ) => void | Promise<void>;
+    };
+  }
+}
+export default function Watchlist() {
+  const [items, setItems] = useState(() =>
+    defaults.map((keyword, i) => ({ keyword, enabled: i < 11 })),
+  );
+  const [draft, setDraft] = useState('');
+  const add = useCallback(
+    (value = draft) => {
+      const keyword = value.trim();
+      if (
+        !keyword ||
+        items.some((x) => x.keyword.toLowerCase() === keyword.toLowerCase())
+      )
+        return false;
+      setItems((x) => [{ keyword, enabled: true }, ...x]);
+      setDraft('');
+      return true;
+    },
+    [draft, items],
+  );
+  useEffect(() => {
+    const ctx = document.modelContext;
+    if (!ctx?.registerTool) return;
+    const c = new AbortController();
+    void Promise.resolve(
+      ctx.registerTool(
+        {
+          name: 'create_keyword_monitor',
+          title: 'Create keyword monitor',
+          description:
+            'Add and enable a keyword in the visible repository watchlist.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              keyword: { type: 'string', minLength: 1, maxLength: 80 },
+            },
+            required: ['keyword'],
+            additionalProperties: false,
+          },
+          annotations: { readOnlyHint: false, untrustedContentHint: false },
+          execute(input: unknown) {
+            const keyword =
+              typeof input === 'object' && input && 'keyword' in input
+                ? String((input as { keyword: unknown }).keyword)
+                : '';
+            if (!keyword.trim()) throw new Error('keyword is required');
+            const created = add(keyword);
+            if (!created) throw new Error('keyword already exists');
+            return { keyword: keyword.trim(), enabled: true };
+          },
+        },
+        { signal: c.signal },
+      ),
+    ).catch(() => {});
+    return () => c.abort();
+  }, [add]);
+  const matches = useMemo(
+    () =>
+      items.map((x) => ({
+        ...x,
+        count: repositories.filter((r) =>
+          JSON.stringify(r)
+            .toLowerCase()
+            .includes(x.keyword.toLowerCase().replace(' agent', '')),
+        ).length,
+      })),
+    [items],
+  );
+  return (
+    <main className="min-h-screen bg-[#0b0d12] p-4 sm:p-8">
+      <div className="mx-auto max-w-6xl">
+        <header className="mb-8 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Link
+              aria-label="Back to discover"
+              className="grid size-9 place-items-center rounded-md border border-white/10 text-zinc-500 hover:text-white"
+              href="/"
+            >
+              <ArrowLeft className="size-4" />
+            </Link>
+            <div>
+              <div className="mono text-[10px] uppercase tracking-[.2em] text-cyan-400">
+                Signal configuration
+              </div>
+              <h1 className="mt-1 text-2xl font-semibold">Keyword watchlist</h1>
+            </div>
+          </div>
+          <div className="hidden items-center gap-2 text-xs text-zinc-500 sm:flex">
+            <TrendingUp className="size-4 text-cyan-300" />
+            {items.filter((x) => x.enabled).length} active monitors
+          </div>
+        </header>
+        <div className="grid gap-5 lg:grid-cols-[1fr_310px]">
+          <section className="panel overflow-hidden">
+            <div className="flex flex-col gap-3 border-b border-white/[.07] p-4 sm:flex-row">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-2.5 size-4 text-zinc-600" />
+                <Input
+                  className="h-9 border-white/[.08] bg-white/[.03] pl-9"
+                  placeholder="Filter keywords…"
+                />
+              </div>
+              <form
+                className="flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  add();
+                }}
+              >
+                <Input
+                  aria-label="New keyword"
+                  className="h-9 border-white/[.08] bg-white/[.03]"
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder="Add a keyword"
+                  value={draft}
+                />
+                <Button className="h-9 bg-cyan-300 text-slate-950 hover:bg-cyan-200">
+                  <Plus />
+                  Add
+                </Button>
+              </form>
+            </div>
+            <div className="divide-y divide-white/[.055]">
+              {matches.map((x, i) => (
+                <div
+                  className="flex items-center gap-4 px-4 py-4"
+                  key={x.keyword}
+                >
+                  <Switch
+                    aria-label={`${x.enabled ? 'Disable' : 'Enable'} ${x.keyword}`}
+                    checked={x.enabled}
+                    onCheckedChange={(enabled) =>
+                      setItems((a) =>
+                        a.map((v, j) => (j === i ? { ...v, enabled } : v)),
+                      )
+                    }
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div
+                      className={
+                        x.enabled
+                          ? 'font-medium text-zinc-200'
+                          : 'font-medium text-zinc-600'
+                      }
+                    >
+                      {x.keyword}
+                    </div>
+                    <div className="mt-1 text-xs text-zinc-600">
+                      Matches name, description, README summary and topics
+                    </div>
+                  </div>
+                  <Badge className="bg-white/[.04] mono text-[10px] text-zinc-500">
+                    {x.count} REPOS
+                  </Badge>
+                  <button
+                    aria-label={`Remove ${x.keyword}`}
+                    className="p-2 text-zinc-700 hover:text-rose-400"
+                    onClick={() => setItems((a) => a.filter((_, j) => j !== i))}
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+          <aside className="space-y-4">
+            <div className="panel p-5">
+              <h2 className="text-sm font-medium">Monitor health</h2>
+              <div className="mt-5 space-y-4">
+                <div className="flex justify-between text-xs">
+                  <span className="text-zinc-500">Active</span>
+                  <span className="mono text-emerald-300">
+                    {items.filter((x) => x.enabled).length}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-zinc-500">Paused</span>
+                  <span className="mono text-zinc-300">
+                    {items.filter((x) => !x.enabled).length}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-zinc-500">Matches today</span>
+                  <span className="mono text-cyan-300">
+                    {matches.reduce((a, b) => a + b.count, 0)}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-lg border border-cyan-300/15 bg-cyan-300/[.045] p-5">
+              <Eye className="size-4 text-cyan-300" />
+              <h2 className="mt-4 text-sm font-medium">How matching works</h2>
+              <p className="mt-2 text-xs leading-5 text-zinc-500">
+                Enabled keywords are included in discovery queries and checked
+                against repository metadata. New matches enter the ranking
+                pipeline automatically.
+              </p>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </main>
+  );
+}
