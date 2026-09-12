@@ -1,7 +1,0 @@
-{
-  "crons": [
-    { "path": "/api/cron/discover", "schedule": "5 * * * *" },
-    { "path": "/api/cron/update", "schedule": "15 * * * *" },
-    { "path": "/api/cron/snapshots", "schedule": "45 * * * *" }
-  ]
-}

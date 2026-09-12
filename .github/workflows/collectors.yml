@@ -1,0 +1,52 @@
+name: GitHub opportunity collectors
+
+on:
+  schedule:
+    - cron: '5 * * * *'
+    - cron: '15 * * * *'
+    - cron: '45 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: github-opportunity-collectors
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '5 * * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discover repositories
+        run: |
+          curl --fail-with-body --retry 3 --retry-all-errors \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/discover"
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  update:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '15 * * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update monitored repositories
+        run: |
+          curl --fail-with-body --retry 3 --retry-all-errors \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/update"
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  snapshots:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '45 * * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Capture repository snapshots
+        run: |
+          curl --fail-with-body --retry 3 --retry-all-errors \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/snapshots"
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
