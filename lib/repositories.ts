@@ -30,6 +30,7 @@ export type RepositoryOpportunity = {
   stars_24h: number | null;
   stars_7d: number | null;
   stars_30d: number | null;
+  relative_growth_24h: number | null;
   velocity: number | null;
   velocity_source: VelocitySource;
   acceleration: number | null;

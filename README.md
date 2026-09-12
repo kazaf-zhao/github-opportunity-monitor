@@ -8,8 +8,9 @@ Copy `.env.example` to `.env.local`, add a GitHub token and Supabase service-rol
 
 ## Data pipeline
 
-- `/api/repositories` reads real repositories and derives 1h/24h/7d/30d growth, velocity, acceleration, signals, and Opportunity Score from snapshots.
-- `/api/cron/discover` rotates across keyword, age, activity, and star-threshold searches, paginates results, deduplicates GitHub IDs, and stores the first real snapshot immediately.
+- `/api/repositories` evaluates up to 1,000 young, recently pushed, or sub-20k-star candidates before sorting and returning the requested Top N. It derives 1h/24h/7d/30d growth, relative growth, velocity, acceleration, signals, and Opportunity Score from snapshots.
+- Historical windows use the newest snapshot at or before the target time. Per-window tolerances reject stale points instead of reporting misleading growth.
+- `/api/cron/discover` runs hourly and rotates three keyword groups. It varies age/activity/star thresholds, paginates results, deduplicates GitHub IDs, and stores the first real snapshot immediately.
 - `/api/cron/update` refreshes the least-recently checked repositories.
 - `/api/cron/snapshots` appends immutable measurements used for growth calculations.
 - `vercel.json` schedules all three jobs. Set `CRON_SECRET` in production.

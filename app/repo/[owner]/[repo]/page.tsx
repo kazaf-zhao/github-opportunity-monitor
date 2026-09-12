@@ -214,11 +214,21 @@ export default async function Detail({
               <h2 className="text-sm font-medium">
                 {zh ? '增长诊断' : 'Growth diagnostics'}
               </h2>
-              <div className="mt-5 grid gap-4 sm:grid-cols-3">
+              <div className="mt-5 grid gap-4 sm:grid-cols-4">
                 <div>
                   <div className="text-xs text-zinc-600">1h / 24h</div>
                   <div className="mt-2 mono text-lg text-cyan-300">
                     {metric(r.stars_1h)} / {metric(r.stars_24h)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-zinc-600">
+                    {zh ? '24h 相对增长' : 'Relative growth · 24h'}
+                  </div>
+                  <div className="mt-2 mono text-lg text-cyan-300">
+                    {r.relative_growth_24h === null
+                      ? '采集中'
+                      : `${r.relative_growth_24h >= 0 ? '+' : ''}${(r.relative_growth_24h * 100).toFixed(1)}%`}
                   </div>
                 </div>
                 <div>

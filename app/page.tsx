@@ -74,7 +74,7 @@ const sortOptions = [
   'Repository Age',
 ];
 const sortZh: Record<string, string> = {
-  'Opportunity Score': '机会评分',
+  'Opportunity Score': '异动优先（机会评分）',
   '24h Star Growth': '24 小时 Star 增长',
   '7d Star Growth': '7 天 Star 增长',
   'Total Stars': 'Star 总数',
@@ -147,6 +147,19 @@ function Growth({ value, suffix }: { value: number | null; suffix: string }) {
     <span className="mono text-xs text-emerald-300">
       {value >= 0 ? '+' : ''}
       {value.toLocaleString()} <span className="text-zinc-600">{suffix}</span>
+    </span>
+  );
+}
+
+function RelativeGrowth({ value, zh }: { value: number | null; zh: boolean }) {
+  return value === null ? (
+    <span className="text-[10px] text-zinc-600">
+      {zh ? '增长率采集中' : 'Growth rate collecting'}
+    </span>
+  ) : (
+    <span className="mono text-[10px] text-violet-300">
+      {value >= 0 ? '+' : ''}
+      {(value * 100).toFixed(1)}% / 24h
     </span>
   );
 }
@@ -297,6 +310,9 @@ function RepoRow({
         </div>
         <div className="mt-1">
           <Growth value={repo.stars_24h} suffix="24h" />
+        </div>
+        <div className="mt-0.5">
+          <RelativeGrowth value={repo.relative_growth_24h} zh={zh} />
         </div>
       </td>
       <td className="hidden xl:table-cell">

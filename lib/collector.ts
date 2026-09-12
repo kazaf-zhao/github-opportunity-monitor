@@ -7,23 +7,17 @@ import {
 } from './github';
 import { supabaseRequest } from './supabase';
 
-const KEYWORDS = [
-  'AI Agent',
-  'MCP',
-  'LLM',
-  'RAG',
-  'Browser Agent',
-  'Computer Use',
-  'Developer Tools',
-  'Crypto',
-  'Trading',
-  'Prediction Market',
-  'Stablecoin',
-  'Database',
-  'Infrastructure',
-  'Automation',
-  'Productivity',
-];
+const KEYWORD_GROUPS = [
+  ['AI Agent', 'MCP', 'LLM', 'RAG', 'Browser Agent', 'Computer Use'],
+  ['Crypto', 'Trading', 'Stablecoin', 'Prediction Market'],
+  [
+    'Database',
+    'Infrastructure',
+    'Automation',
+    'Productivity',
+    'Developer Tools',
+  ],
+] as const;
 
 async function recordRun(
   job: 'discover' | 'snapshot',
@@ -53,20 +47,24 @@ async function recordRun(
 }
 
 function queryPlans() {
+  const hour = new Date().getUTCHours();
+  const groupIndex = hour % KEYWORD_GROUPS.length;
+  const cycle = Math.floor(hour / KEYWORD_GROUPS.length) % 3;
   const windows = [7, 30, 90];
   const minimumStars = [10, 50, 100];
-  return KEYWORDS.map((keyword, index) => {
-    const days = windows[index % windows.length];
-    const stars = minimumStars[index % minimumStars.length];
+  const plans = KEYWORD_GROUPS[groupIndex].map((keyword, index) => {
+    const days = windows[(index + cycle) % windows.length];
+    const stars = minimumStars[(index + cycle * 2) % minimumStars.length];
     const date = new Date(Date.now() - days * 86_400_000)
       .toISOString()
       .slice(0, 10);
-    const recentActivity = index % 4 === 3;
+    const recentActivity = (index + cycle) % 3 === 2;
     return {
       query: `"${keyword}" ${recentActivity ? `pushed:>${date}` : `created:>${date}`} stars:>${stars} archived:false`,
       sort: recentActivity ? ('updated' as const) : ('stars' as const),
     };
   });
+  return { groupIndex, plans };
 }
 
 function toRow(repository: GitHubRepository) {
@@ -96,7 +94,8 @@ export async function discover() {
   const errors: string[] = [];
   let requests = 0;
   try {
-    for (const plan of queryPlans()) {
+    const { groupIndex, plans } = queryPlans();
+    for (const plan of plans) {
       for (let page = 1; page <= 2; page++) {
         const rate = getLastGitHubRateLimit();
         if (
@@ -156,13 +155,19 @@ export async function discover() {
       {
         processed_count: rows.length,
         request_count: requests,
+        query_group: groupIndex,
         error_message: errors.length ? errors.slice(-5).join('\n') : null,
         rate_limit_remaining: rate.remaining,
         rate_limit_reset: rate.reset,
       },
       runId,
     );
-    return { discovered: rows.length, requests, errors: errors.length };
+    return {
+      discovered: rows.length,
+      requests,
+      errors: errors.length,
+      query_group: groupIndex,
+    };
   } catch (error) {
     await recordRun(
       'discover',
