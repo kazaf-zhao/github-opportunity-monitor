@@ -6,6 +6,14 @@ export type Signal =
   | 'EARLY SIGNAL';
 
 export type VelocitySource = '1h' | '6h' | '24h' | null;
+export type RecallSource =
+  | 'recent_created'
+  | 'recent_active'
+  | 'small_repo'
+  | 'early_stage'
+  | 'star_spike'
+  | 'high_acceleration'
+  | 'high_relative_growth';
 
 export type RepositoryOpportunity = {
   id: string;
@@ -27,6 +35,7 @@ export type RepositoryOpportunity = {
   last_snapshot_at: string | null;
   repository_age_days: number;
   stars_1h: number | null;
+  stars_6h: number | null;
   stars_24h: number | null;
   stars_7d: number | null;
   stars_30d: number | null;
@@ -36,6 +45,7 @@ export type RepositoryOpportunity = {
   acceleration: number | null;
   opportunity_score: number;
   signals: Signal[];
+  recall_sources: RecallSource[];
   spark: number[];
   spark_timestamps: string[];
 };
@@ -48,6 +58,11 @@ export type RepositoryApiResponse = {
     last_snapshot_at: string | null;
     data_status: 'LIVE' | 'RECENT' | 'STALE' | 'WAITING';
     updated_at: string;
+    recall_stats?: {
+      source_counts: Record<RecallSource, number>;
+      candidate_count: number;
+      deduplicated_count: number;
+    };
   };
 };
 

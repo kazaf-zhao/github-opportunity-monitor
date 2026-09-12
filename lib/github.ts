@@ -77,6 +77,7 @@ export type GitHubRepository = {
   open_issues_count: number;
   language: string | null;
   topics?: string[];
+  archived: boolean;
   created_at: string;
   pushed_at: string;
 };

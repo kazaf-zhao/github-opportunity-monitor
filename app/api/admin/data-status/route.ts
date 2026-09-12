@@ -11,6 +11,12 @@ type Run = {
   completed_at: string | null;
   error_message: string | null;
 };
+type RecallStatus = {
+  source_counts: Record<string, number>;
+  candidate_count: number;
+  deduplicated_count: number;
+  computed_at: string;
+};
 
 export async function GET() {
   let supabase: '正常' | '异常' = '正常';
@@ -19,6 +25,7 @@ export async function GET() {
   let snapshotCount = 0;
   let lastSnapshot: string | null = null;
   let runs: Run[] = [];
+  let recallStatus: RecallStatus | null = null;
   let githubRate: Awaited<ReturnType<typeof checkGitHub>> | null = null;
   const errors: string[] = [];
   try {
@@ -33,6 +40,10 @@ export async function GET() {
       'repository_snapshots?select=captured_at&order=captured_at.desc&limit=1',
     );
     lastSnapshot = latest[0]?.captured_at ?? null;
+    const recallRows = await supabaseRequest<RecallStatus[]>(
+      'candidate_recall_status?select=source_counts,candidate_count,deduplicated_count,computed_at&id=eq.true&limit=1',
+    );
+    recallStatus = recallRows[0] ?? null;
   } catch (error) {
     supabase = '异常';
     errors.push(String(error));
@@ -55,6 +66,7 @@ export async function GET() {
     last_snapshot_at: lastSnapshot,
     github_rate_limit: githubRate,
     recent_error: recentFailure?.error_message ?? errors.at(-1) ?? null,
+    recall_status: recallStatus,
   });
 }
 

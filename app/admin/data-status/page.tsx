@@ -22,6 +22,12 @@ type Status = {
   last_snapshot_at: string | null;
   github_rate_limit: { remaining: number; limit: number; reset: string } | null;
   recent_error: string | null;
+  recall_status: {
+    source_counts: Record<string, number>;
+    candidate_count: number;
+    deduplicated_count: number;
+    computed_at: string;
+  } | null;
 };
 const showTime = (value: string | null) =>
   value ? new Date(value).toLocaleString('zh-CN') : '尚未运行';
@@ -89,6 +95,12 @@ export default function DataStatusPage() {
           >
             <RefreshCw className="size-4" />
           </Button>
+          <Link
+            className="rounded-md border border-white/10 px-3 py-2 text-xs text-zinc-400 hover:text-cyan-200"
+            href="/admin/candidates"
+          >
+            查看候选调试
+          </Link>
         </header>
         {error && (
           <div className="mb-5 rounded-md border border-rose-400/20 bg-rose-400/5 p-4 text-sm text-rose-300">
@@ -118,6 +130,49 @@ export default function DataStatusPage() {
               <div className="mt-1 text-xs text-zinc-600">{label}</div>
             </div>
           ))}
+        </section>
+        <section className="panel mt-5 p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-medium">多路召回统计</h2>
+            <span className="mono text-xs text-zinc-600">
+              {status?.recall_status
+                ? showTime(status.recall_status.computed_at)
+                : '尚未计算'}
+            </span>
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              ['Recent Created', 'recent_created'],
+              ['Recent Active', 'recent_active'],
+              ['Small Repo', 'small_repo'],
+              ['Early Stage', 'early_stage'],
+              ['Star Spike', 'star_spike'],
+              ['Acceleration', 'high_acceleration'],
+              ['Relative Growth', 'high_relative_growth'],
+            ].map(([label, key]) => (
+              <div
+                className="rounded-md border border-white/[.06] p-3"
+                key={key}
+              >
+                <div className="mono text-lg text-zinc-200">
+                  {status?.recall_status?.source_counts[key] ?? '—'}
+                </div>
+                <div className="mt-1 text-xs text-zinc-600">{label}</div>
+              </div>
+            ))}
+            <div className="rounded-md border border-cyan-300/20 bg-cyan-300/[.04] p-3">
+              <div className="mono text-lg text-cyan-300">
+                {status?.recall_status?.deduplicated_count ?? '—'}
+              </div>
+              <div className="mt-1 text-xs text-zinc-600">去重后</div>
+            </div>
+          </div>
+          <div className="mt-4 text-xs text-zinc-500">
+            本轮候选仓库：
+            <span className="ml-2 mono text-zinc-200">
+              {status?.recall_status?.candidate_count ?? '—'}
+            </span>
+          </div>
         </section>
         <section className="panel mt-5 p-5">
           <div className="grid gap-5 md:grid-cols-2">

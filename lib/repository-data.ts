@@ -1,4 +1,5 @@
 import type {
+  RecallSource,
   RepositoryApiResponse,
   RepositoryOpportunity,
   VelocitySource,
@@ -15,6 +16,7 @@ type RepositoryRow = Omit<
   RepositoryOpportunity,
   | 'repository_age_days'
   | 'stars_1h'
+  | 'stars_6h'
   | 'stars_24h'
   | 'stars_7d'
   | 'stars_30d'
@@ -24,42 +26,56 @@ type RepositoryRow = Omit<
   | 'acceleration'
   | 'opportunity_score'
   | 'signals'
+  | 'recall_sources'
   | 'spark'
   | 'spark_timestamps'
 >;
-type SnapshotRow = {
+export type SnapshotRow = {
   repository_id: string;
   stars: number;
   forks: number;
   open_issues: number;
   captured_at: string;
 };
-type Derived = {
-  row: RepositoryRow;
-  points: SnapshotRow[];
-  ageDays: number;
-  stars1h: number | null;
-  stars24h: number | null;
-  stars7d: number | null;
-  stars30d: number | null;
-  relativeGrowth24h: number | null;
+type RecallSeed = { id: string; stars: number };
+type SnapshotMetricRow = {
+  repository_id: string;
+  current_stars: number;
+  stars_1h: number | null;
+  stars_6h: number | null;
+  stars_24h: number | null;
+  stars_7d: number | null;
+  stars_30d: number | null;
+  relative_growth_24h: number | null;
   velocity: number | null;
-  velocitySource: VelocitySource;
-  currentVelocity24h: number | null;
-  previousVelocity24h: number | null;
+  velocity_source: VelocitySource;
   acceleration: number | null;
-  inputs: OpportunityInputs;
+};
+type MetricRecallRow = SnapshotMetricRow & {
+  recall_source: Extract<
+    RecallSource,
+    'star_spike' | 'high_acceleration' | 'high_relative_growth'
+  >;
+};
+type Candidate = {
+  id: string;
+  stars: number;
+  recall_sources: Set<RecallSource>;
+  recallMetric?: MetricRecallRow;
 };
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
-const WINDOW_TOLERANCE = {
-  [HOUR]: 2 * HOUR,
-  [6 * HOUR]: 4 * HOUR,
-  [DAY]: 8 * HOUR,
-  [7 * DAY]: DAY,
-  [30 * DAY]: 3 * DAY,
-} as const;
+const MAX_CANDIDATES = 2000;
+const EMPTY_SOURCE_COUNTS: Record<RecallSource, number> = {
+  recent_created: 0,
+  recent_active: 0,
+  small_repo: 0,
+  early_stage: 0,
+  star_spike: 0,
+  high_acceleration: 0,
+  high_relative_growth: 0,
+};
 
 export function pointAtOrBefore(
   points: SnapshotRow[],
@@ -83,13 +99,13 @@ function sample(points: SnapshotRow[], maxPoints = 48) {
   );
 }
 
-async function loadSnapshots(repositoryIds: string[]) {
+async function loadSnapshots(repositoryIds: string[], days: number) {
   const all: SnapshotRow[] = [];
   for (let start = 0; start < repositoryIds.length; start += 20) {
     const ids = repositoryIds.slice(start, start + 20).join(',');
     for (let offset = 0; ; offset += 1000) {
       const page = await supabaseRequest<SnapshotRow[]>(
-        `repository_snapshots?select=repository_id,stars,forks,open_issues,captured_at&repository_id=in.(${ids})&captured_at=gte.${encodeURIComponent(new Date(Date.now() - 34 * DAY).toISOString())}&order=captured_at.asc&limit=1000&offset=${offset}`,
+        `repository_snapshots?select=repository_id,stars,forks,open_issues,captured_at&repository_id=in.(${ids})&captured_at=gte.${encodeURIComponent(new Date(Date.now() - days * DAY).toISOString())}&order=captured_at.asc&limit=1000&offset=${offset}`,
       );
       all.push(...page);
       if (page.length < 1000) break;
@@ -98,94 +114,171 @@ async function loadSnapshots(repositoryIds: string[]) {
   return all;
 }
 
-function derive(row: RepositoryRow, points: SnapshotRow[]): Derived {
+async function recallCandidates() {
   const now = Date.now();
-  const latest = points.at(-1) ?? null;
-  const pointFor = (duration: keyof typeof WINDOW_TOLERANCE) =>
-    latest
-      ? pointAtOrBefore(
-          points,
-          Date.parse(latest.captured_at) - duration,
-          WINDOW_TOLERANCE[duration],
-        )
-      : null;
-  const delta = (duration: keyof typeof WINDOW_TOLERANCE) => {
-    if (!latest) return null;
-    const previous = pointFor(duration);
-    return previous ? latest.stars - previous.stars : null;
-  };
-  const stars1h = delta(HOUR);
-  const stars6h = delta(6 * HOUR);
-  const stars24h = delta(DAY);
-  const stars7d = delta(7 * DAY);
-  const stars30d = delta(30 * DAY);
-  const latestTime = latest ? Date.parse(latest.captured_at) : now;
-  const at24h = latest
-    ? pointAtOrBefore(points, latestTime - DAY, 8 * HOUR)
-    : null;
-  const at48h = latest
-    ? pointAtOrBefore(points, latestTime - 2 * DAY, 8 * HOUR)
-    : null;
-  const currentVelocity24h = stars24h === null ? null : stars24h / 24;
-  const previousVelocity24h =
-    at24h && at48h ? (at24h.stars - at48h.stars) / 24 : null;
-  const acceleration =
-    currentVelocity24h === null || previousVelocity24h === null
-      ? null
-      : previousVelocity24h === 0
-        ? currentVelocity24h > 0
-          ? 2
-          : 1
-        : currentVelocity24h / previousVelocity24h;
-  let velocity: number | null = null;
-  let velocitySource: VelocitySource = null;
-  if (stars24h !== null) {
-    velocity = stars24h / 24;
-    velocitySource = '24h';
-  } else if (stars6h !== null) {
-    velocity = stars6h / 6;
-    velocitySource = '6h';
-  } else if (stars1h !== null) {
-    velocity = stars1h;
-    velocitySource = '1h';
-  }
-  const ageDays = Math.max(
-    0,
-    Math.floor((now - Date.parse(row.created_at)) / DAY),
+  const created90d = encodeURIComponent(new Date(now - 90 * DAY).toISOString());
+  const created180d = encodeURIComponent(
+    new Date(now - 180 * DAY).toISOString(),
   );
-  const forkStarRatio = row.stars > 0 ? row.forks / row.stars : 0;
-  const relativeGrowth24h =
-    stars24h === null ? null : stars24h / Math.max(row.stars - stars24h, 1);
-  const pushedRecencyHours = row.pushed_at
-    ? Math.max(0, (now - Date.parse(row.pushed_at)) / HOUR)
-    : Number.MAX_SAFE_INTEGER;
-  return {
-    row,
-    points,
-    ageDays,
-    stars1h,
-    stars24h,
-    stars7d,
-    stars30d,
-    relativeGrowth24h,
-    velocity,
-    velocitySource,
-    currentVelocity24h,
-    previousVelocity24h,
-    acceleration,
-    inputs: {
-      velocity,
-      acceleration,
-      relativeGrowth24h,
-      ageDays,
-      stars: row.stars,
-      stars24h,
-      forkStarRatio,
-      pushedRecencyHours,
-      communityRatio:
-        row.stars > 0 ? row.open_issues / row.stars : row.open_issues,
-    },
+  const pushed30d = encodeURIComponent(new Date(now - 30 * DAY).toISOString());
+  const [recentCreated, recentActive, smallRepo, earlyStage, metricRows] =
+    await Promise.all([
+      supabaseRequest<RecallSeed[]>(
+        `repositories?select=id,stars&archived=eq.false&created_at=gte.${created90d}&stars=gte.1&order=created_at.desc&limit=300`,
+      ),
+      supabaseRequest<RecallSeed[]>(
+        `repositories?select=id,stars&archived=eq.false&pushed_at=gte.${pushed30d}&order=pushed_at.desc&limit=300`,
+      ),
+      supabaseRequest<RecallSeed[]>(
+        'repositories?select=id,stars&archived=eq.false&stars=gte.20&stars=lt.5000&order=last_snapshot_at.desc.nullslast&limit=300',
+      ),
+      supabaseRequest<RecallSeed[]>(
+        `repositories?select=id,stars&archived=eq.false&stars=lt.2000&created_at=gte.${created180d}&order=created_at.desc&limit=300`,
+      ),
+      supabaseRequest<MetricRecallRow[]>(
+        'rpc/get_opportunity_metric_recall',
+        'POST',
+        {},
+      ),
+    ]);
+  const metricBySource = {
+    star_spike: metricRows.filter((row) => row.recall_source === 'star_spike'),
+    high_acceleration: metricRows.filter(
+      (row) => row.recall_source === 'high_acceleration',
+    ),
+    high_relative_growth: metricRows.filter(
+      (row) => row.recall_source === 'high_relative_growth',
+    ),
   };
+  const sourceCounts: Record<RecallSource, number> = {
+    ...EMPTY_SOURCE_COUNTS,
+    recent_created: recentCreated.length,
+    recent_active: recentActive.length,
+    small_repo: smallRepo.length,
+    early_stage: earlyStage.length,
+    star_spike: metricBySource.star_spike.length,
+    high_acceleration: metricBySource.high_acceleration.length,
+    high_relative_growth: metricBySource.high_relative_growth.length,
+  };
+  const candidateMap = new Map<string, Candidate>();
+  const add = (
+    source: RecallSource,
+    rows: Array<RecallSeed | MetricRecallRow>,
+  ) => {
+    for (const row of rows) {
+      const id = 'id' in row ? row.id : row.repository_id;
+      const stars = 'stars' in row ? row.stars : row.current_stars;
+      const candidate = candidateMap.get(id) ?? {
+        id,
+        stars,
+        recall_sources: new Set<RecallSource>(),
+      };
+      candidate.recall_sources.add(source);
+      if ('recall_source' in row) candidate.recallMetric = row;
+      candidateMap.set(id, candidate);
+    }
+  };
+  add('star_spike', metricBySource.star_spike);
+  add('high_acceleration', metricBySource.high_acceleration);
+  add('high_relative_growth', metricBySource.high_relative_growth);
+  add('early_stage', earlyStage);
+  add('recent_created', recentCreated);
+  add('recent_active', recentActive);
+  add('small_repo', smallRepo);
+
+  const deduplicatedCount = candidateMap.size;
+  const eligible = [...candidateMap.values()].filter((candidate) => {
+    if (candidate.stars <= 50_000) return true;
+    return (
+      (candidate.recallMetric?.stars_24h ?? Number.NEGATIVE_INFINITY) >= 300 ||
+      (candidate.recallMetric?.acceleration ?? Number.NEGATIVE_INFINITY) >= 2
+    );
+  });
+  const nonMature = eligible.filter((candidate) => candidate.stars <= 50_000);
+  const mature = eligible.filter((candidate) => candidate.stars > 50_000);
+  const matureLimit = Math.min(
+    mature.length,
+    Math.floor(nonMature.length / 4),
+    Math.floor(MAX_CANDIDATES * 0.2),
+  );
+  const nonMatureLimit = Math.min(
+    nonMature.length,
+    MAX_CANDIDATES - matureLimit,
+  );
+  const expectedSize = nonMatureLimit + matureLimit;
+  const earlyTarget = Math.min(
+    nonMature.filter((candidate) => candidate.stars < 2000).length,
+    Math.ceil(expectedSize * 0.3),
+  );
+  const selected: Candidate[] = [];
+  const selectedIds = new Set<string>();
+  for (const candidate of nonMature) {
+    if (selected.length >= earlyTarget) break;
+    if (candidate.stars < 2000) {
+      selected.push(candidate);
+      selectedIds.add(candidate.id);
+    }
+  }
+  for (const candidate of nonMature) {
+    if (selected.length >= nonMatureLimit) break;
+    if (selectedIds.has(candidate.id)) continue;
+    selected.push(candidate);
+    selectedIds.add(candidate.id);
+  }
+  for (const candidate of mature.slice(0, matureLimit)) {
+    selected.push(candidate);
+    selectedIds.add(candidate.id);
+  }
+  return { selected, sourceCounts, deduplicatedCount };
+}
+
+async function loadRepositoryRows(ids: string[]) {
+  const rows: RepositoryRow[] = [];
+  for (let start = 0; start < ids.length; start += 100) {
+    rows.push(
+      ...(await supabaseRequest<RepositoryRow[]>(
+        `repositories?select=id,github_id,owner,name,full_name,description,description_zh,github_url,stars,forks,open_issues,primary_language,topics,created_at,pushed_at,updated_at,last_snapshot_at&id=in.(${ids.slice(start, start + 100).join(',')})`,
+      )),
+    );
+  }
+  return rows;
+}
+
+async function loadSnapshotMetrics(ids: string[]) {
+  const rows: SnapshotMetricRow[] = [];
+  for (let start = 0; start < ids.length; start += 500) {
+    rows.push(
+      ...(await supabaseRequest<SnapshotMetricRow[]>(
+        'rpc/get_repository_snapshot_metrics',
+        'POST',
+        { candidate_ids: ids.slice(start, start + 500) },
+      )),
+    );
+  }
+  return rows;
+}
+
+async function recordRecallStatus(
+  sourceCounts: Record<RecallSource, number>,
+  candidateCount: number,
+  deduplicatedCount: number,
+) {
+  try {
+    await supabaseRequest(
+      'candidate_recall_status?on_conflict=id',
+      'POST',
+      {
+        id: true,
+        source_counts: sourceCounts,
+        candidate_count: candidateCount,
+        deduplicated_count: deduplicatedCount,
+        computed_at: new Date().toISOString(),
+      },
+      'resolution=merge-duplicates,return=representation',
+    );
+  } catch (error) {
+    console.warn('recall_status_log_failed', error);
+  }
 }
 
 export function dataStatus(lastSnapshotAt: string | null) {
@@ -201,71 +294,133 @@ export async function getRepositoryOpportunities(options?: {
   offset?: number;
   owner?: string;
   repo?: string;
+  includeSpark?: boolean;
 }): Promise<RepositoryApiResponse> {
   const limit = Math.min(Math.max(options?.limit ?? 100, 1), 500);
   const offset = Math.max(options?.offset ?? 0, 0);
-  const filters = [
-    options?.owner ? `owner=eq.${encodeURIComponent(options.owner)}` : '',
-    options?.repo ? `name=eq.${encodeURIComponent(options.repo)}` : '',
-  ].filter(Boolean);
-  const now = Date.now();
-  const candidateFilter = filters.length
-    ? `${filters.join('&')}&`
-    : `or=(created_at.gte.${encodeURIComponent(new Date(now - 90 * DAY).toISOString())},pushed_at.gte.${encodeURIComponent(new Date(now - 30 * DAY).toISOString())},stars.lt.20000)&`;
-  const rows = await supabaseRequest<RepositoryRow[]>(
-    `repositories?select=id,github_id,owner,name,full_name,description,description_zh,github_url,stars,forks,open_issues,primary_language,topics,created_at,pushed_at,updated_at,last_snapshot_at&${candidateFilter}order=pushed_at.desc.nullslast,created_at.desc&limit=${filters.length ? 1 : 1000}`,
+  const isDetail = Boolean(options?.owner && options?.repo);
+  let sourceCounts = { ...EMPTY_SOURCE_COUNTS };
+  let deduplicatedCount = 0;
+  let candidates: Candidate[];
+
+  if (isDetail) {
+    const rows = await supabaseRequest<RecallSeed[]>(
+      `repositories?select=id,stars&owner=eq.${encodeURIComponent(options!.owner!)}&name=eq.${encodeURIComponent(options!.repo!)}&limit=1`,
+    );
+    candidates = rows.map((row) => ({
+      ...row,
+      recall_sources: new Set<RecallSource>(),
+    }));
+    deduplicatedCount = candidates.length;
+  } else {
+    const recalled = await recallCandidates();
+    candidates = recalled.selected;
+    sourceCounts = recalled.sourceCounts;
+    deduplicatedCount = recalled.deduplicatedCount;
+  }
+
+  const candidateById = new Map(candidates.map((item) => [item.id, item]));
+  const ids = candidates.map((candidate) => candidate.id);
+  const recalledMetricMap = new Map<string, SnapshotMetricRow>();
+  for (const candidate of candidates) {
+    if (candidate.recallMetric)
+      recalledMetricMap.set(candidate.id, candidate.recallMetric);
+  }
+  const missingMetricIds = ids.filter((id) => !recalledMetricMap.has(id));
+  const [rows, missingMetricRows] = await Promise.all([
+    loadRepositoryRows(ids),
+    loadSnapshotMetrics(missingMetricIds),
+  ]);
+  const metricById = new Map(
+    [...recalledMetricMap.values(), ...missingMetricRows].map((metric) => [
+      metric.repository_id,
+      metric,
+    ]),
   );
-  const derived: Derived[] = [];
-  for (let start = 0; start < rows.length; start += 20) {
-    const batch = rows.slice(start, start + 20);
-    const snapshots = await loadSnapshots(batch.map((row) => row.id));
+  const now = Date.now();
+  const inputs: OpportunityInputs[] = rows.map((row) => {
+    const metric = metricById.get(row.id);
+    const ageDays = Math.max(
+      0,
+      Math.floor((now - Date.parse(row.created_at)) / DAY),
+    );
+    return {
+      velocity: metric?.velocity ?? null,
+      acceleration: metric?.acceleration ?? null,
+      relativeGrowth24h: metric?.relative_growth_24h ?? null,
+      ageDays,
+      stars: row.stars,
+      stars24h: metric?.stars_24h ?? null,
+      forkStarRatio: row.stars > 0 ? row.forks / row.stars : 0,
+      pushedRecencyHours: row.pushed_at
+        ? Math.max(0, (now - Date.parse(row.pushed_at)) / HOUR)
+        : Number.MAX_SAFE_INTEGER,
+      communityRatio:
+        row.stars > 0 ? row.open_issues / row.stars : row.open_issues,
+    };
+  });
+  const scores = scoreOpportunities(inputs);
+  const conversionCutoff = highConversionThreshold(
+    inputs.map((input) => input.forkStarRatio),
+  );
+  const ranked = rows
+    .map((row, index): RepositoryOpportunity => {
+      const metric = metricById.get(row.id);
+      const input = inputs[index];
+      return {
+        ...row,
+        repository_age_days: input.ageDays,
+        stars_1h: metric?.stars_1h ?? null,
+        stars_6h: metric?.stars_6h ?? null,
+        stars_24h: metric?.stars_24h ?? null,
+        stars_7d: metric?.stars_7d ?? null,
+        stars_30d: metric?.stars_30d ?? null,
+        relative_growth_24h: metric?.relative_growth_24h ?? null,
+        velocity: metric?.velocity ?? null,
+        velocity_source: metric?.velocity_source ?? null,
+        acceleration: metric?.acceleration ?? null,
+        opportunity_score: scores[index],
+        signals: detectSignals({
+          stars: row.stars,
+          ageDays: input.ageDays,
+          stars24h: metric?.stars_24h ?? null,
+          relativeGrowth24h: metric?.relative_growth_24h ?? null,
+          acceleration: metric?.acceleration ?? null,
+          forkStarRatio: input.forkStarRatio,
+          highConversionRatio: conversionCutoff,
+        }),
+        recall_sources: [...(candidateById.get(row.id)?.recall_sources ?? [])],
+        spark: [],
+        spark_timestamps: [],
+      };
+    })
+    .sort((a, b) => b.opportunity_score - a.opportunity_score);
+  const rankedData = ranked.slice(offset, offset + limit);
+
+  if (options?.includeSpark !== false && rankedData.length) {
+    const snapshots = await loadSnapshots(
+      rankedData.map((row) => row.id),
+      isDetail ? 34 : 7,
+    );
     const byRepository = new Map<string, SnapshotRow[]>();
     for (const point of snapshots) {
       const group = byRepository.get(point.repository_id) ?? [];
       group.push(point);
       byRepository.set(point.repository_id, group);
     }
-    for (const row of batch) {
-      const item = derive(row, byRepository.get(row.id) ?? []);
-      item.points = sample(item.points);
-      derived.push(item);
+    for (const row of rankedData) {
+      const visible = sample(byRepository.get(row.id) ?? []);
+      row.spark = visible.map((point) => point.stars);
+      row.spark_timestamps = visible.map((point) => point.captured_at);
     }
   }
-  const scores = scoreOpportunities(derived.map((item) => item.inputs));
-  const conversionCutoff = highConversionThreshold(
-    derived.map((item) => item.inputs.forkStarRatio),
-  );
-  const data = derived.map((item, index): RepositoryOpportunity => {
-    const visiblePoints = sample(item.points);
-    return {
-      ...item.row,
-      repository_age_days: item.ageDays,
-      stars_1h: item.stars1h,
-      stars_24h: item.stars24h,
-      stars_7d: item.stars7d,
-      stars_30d: item.stars30d,
-      relative_growth_24h: item.relativeGrowth24h,
-      velocity: item.velocity,
-      velocity_source: item.velocitySource,
-      acceleration: item.acceleration,
-      opportunity_score: scores[index],
-      signals: detectSignals({
-        stars: item.row.stars,
-        ageDays: item.ageDays,
-        stars24h: item.stars24h,
-        relativeGrowth24h: item.relativeGrowth24h,
-        acceleration: item.acceleration,
-        currentVelocity24h: item.currentVelocity24h,
-        previousVelocity24h: item.previousVelocity24h,
-        forkStarRatio: item.inputs.forkStarRatio,
-        highConversionRatio: conversionCutoff,
-      }),
-      spark: visiblePoints.map((point) => point.stars),
-      spark_timestamps: visiblePoints.map((point) => point.captured_at),
-    };
-  });
-  data.sort((a, b) => b.opportunity_score - a.opportunity_score);
-  const rankedData = data.slice(offset, offset + limit);
+
+  if (!isDetail)
+    await recordRecallStatus(
+      sourceCounts,
+      candidates.length,
+      deduplicatedCount,
+    );
   const [repositoryCount, snapshotCount, latestSnapshots] = await Promise.all([
     supabaseCount('repositories'),
     supabaseCount('repository_snapshots'),
@@ -282,6 +437,11 @@ export async function getRepositoryOpportunities(options?: {
       last_snapshot_at: lastSnapshotAt,
       data_status: dataStatus(lastSnapshotAt),
       updated_at: new Date().toISOString(),
+      recall_stats: {
+        source_counts: sourceCounts,
+        candidate_count: candidates.length,
+        deduplicated_count: deduplicatedCount,
+      },
     },
   };
 }

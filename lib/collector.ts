@@ -81,6 +81,7 @@ function toRow(repository: GitHubRepository) {
     open_issues: repository.open_issues_count,
     primary_language: repository.language,
     topics: repository.topics ?? [],
+    archived: repository.archived,
     created_at: repository.created_at,
     pushed_at: repository.pushed_at,
     updated_at: capturedAt,
@@ -208,6 +209,7 @@ export async function snapshot(limit = 250) {
         forks: data.forks_count,
         open_issues: data.open_issues_count,
         pushed_at: data.pushed_at,
+        archived: data.archived,
         updated_at: capturedAt,
         last_snapshot_at: capturedAt,
       });

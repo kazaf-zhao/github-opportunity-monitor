@@ -73,18 +73,15 @@ export function detectSignals(input: {
   stars24h: number | null;
   relativeGrowth24h: number | null;
   acceleration: number | null;
-  currentVelocity24h: number | null;
-  previousVelocity24h: number | null;
   forkStarRatio: number;
   highConversionRatio: number;
 }): Signal[] {
   const signals: Signal[] = [];
-  const hasComparison =
-    input.currentVelocity24h !== null && input.previousVelocity24h !== null;
   const accelerating =
-    hasComparison &&
-    input.currentVelocity24h! >= input.previousVelocity24h! * 1.5 &&
-    input.currentVelocity24h! > 0;
+    input.acceleration !== null &&
+    input.acceleration >= 1.5 &&
+    input.stars24h !== null &&
+    input.stars24h > 0;
 
   if (
     input.stars24h !== null &&
