@@ -13,14 +13,17 @@ export async function supabaseFetch(
   prefer = 'return=representation',
 ) {
   const { url, key } = config();
+  const headers: Record<string, string> = {
+    apikey: key,
+    'Content-Type': 'application/json',
+    Prefer: prefer,
+  };
+  if (!key.startsWith('sb_secret_')) {
+    headers.Authorization = `Bearer ${key}`;
+  }
   const response = await fetch(`${url}/rest/v1/${path}`, {
     method,
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
-      Prefer: prefer,
-    },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
     cache: 'no-store',
   });
