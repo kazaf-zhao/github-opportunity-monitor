@@ -65,7 +65,16 @@ export async function GET() {
     errors.push(String(error));
   }
   const discoveryRun = runs.find((run) => run.job === 'discover');
-  const recentFailure = runs.find((run) => run.error_message);
+  // Only surface an error when the latest run for that collector job failed.
+  // A later successful run means the older error has recovered and should not
+  // keep the production status page in a misleading error state.
+  const latestRunsByJob = new Map<string, Run>();
+  for (const run of runs) {
+    if (!latestRunsByJob.has(run.job)) latestRunsByJob.set(run.job, run);
+  }
+  const recentFailure = [...latestRunsByJob.values()].find(
+    (run) => run.error_message,
+  );
   return Response.json({
     github,
     supabase,
