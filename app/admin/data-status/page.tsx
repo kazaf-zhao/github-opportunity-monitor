@@ -27,6 +27,18 @@ type Status = {
     candidate_count: number;
     deduplicated_count: number;
     computed_at: string;
+    category_pool_counts: Record<string, number>;
+    top50_category_counts: Record<string, number>;
+    category_bias: Array<{
+      category: string;
+      pool_share: number;
+      top50_share: number;
+      ratio: number;
+    }>;
+  } | null;
+  discovery_status: {
+    source_counts: Record<string, number>;
+    tier_request_counts: Record<string, number>;
   } | null;
 };
 const showTime = (value: string | null) =>
@@ -71,6 +83,19 @@ export default function DataStatusPage() {
       setRunning(null);
     }
   };
+  const poolCategories = status?.recall_status?.category_pool_counts ?? {};
+  const topCategories = status?.recall_status?.top50_category_counts ?? {};
+  const poolTotal = Object.values(poolCategories).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
+  const topTotal = Object.values(topCategories).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
+  const categories = [
+    ...new Set([...Object.keys(poolCategories), ...Object.keys(topCategories)]),
+  ].sort((a, b) => (poolCategories[b] ?? 0) - (poolCategories[a] ?? 0));
   return (
     <main className="min-h-screen bg-[#0b0d12] p-4 sm:p-8">
       <div className="mx-auto max-w-5xl">
@@ -101,6 +126,12 @@ export default function DataStatusPage() {
           >
             查看候选调试
           </Link>
+          <Link
+            className="rounded-md border border-white/10 px-3 py-2 text-xs text-zinc-400 hover:text-cyan-200"
+            href="/admin/discovery"
+          >
+            查看 Discovery
+          </Link>
         </header>
         {error && (
           <div className="mb-5 rounded-md border border-rose-400/20 bg-rose-400/5 p-4 text-sm text-rose-300">
@@ -130,6 +161,85 @@ export default function DataStatusPage() {
               <div className="mt-1 text-xs text-zinc-600">{label}</div>
             </div>
           ))}
+        </section>
+        <section className="panel mt-5 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-medium">Category Bias Monitor</h2>
+              <p className="mt-1 text-xs text-zinc-600">
+                对比统一评分前的候选池与原始 Top 50，识别采样或评分偏置。
+              </p>
+            </div>
+            {status?.recall_status?.category_bias?.length ? (
+              <span className="rounded border border-amber-300/20 bg-amber-300/[.06] px-2 py-1 text-xs text-amber-300">
+                ⚠ 评分偏置
+              </span>
+            ) : (
+              <span className="text-xs text-zinc-600">未检测到 ≥2× 偏置</span>
+            )}
+          </div>
+          <div className="mt-5 overflow-x-auto">
+            <table className="w-full min-w-[560px] text-left text-xs">
+              <thead className="border-b border-white/[.07] text-zinc-600">
+                <tr>
+                  <th className="pb-3">Category</th>
+                  <th className="pb-3">候选池类别占比</th>
+                  <th className="pb-3">Top 50 类别占比</th>
+                  <th className="pb-3">判断</th>
+                </tr>
+              </thead>
+              <tbody>
+                {categories.map((category) => {
+                  const poolShare = poolTotal
+                    ? (poolCategories[category] ?? 0) / poolTotal
+                    : 0;
+                  const topShare = topTotal
+                    ? (topCategories[category] ?? 0) / topTotal
+                    : 0;
+                  const ratio = poolShare ? topShare / poolShare : 0;
+                  return (
+                    <tr className="border-b border-white/[.05]" key={category}>
+                      <td className="py-3 text-zinc-300">{category}</td>
+                      <td className="mono">{(poolShare * 100).toFixed(1)}%</td>
+                      <td className="mono">{(topShare * 100).toFixed(1)}%</td>
+                      <td
+                        className={
+                          ratio >= 2 ? 'text-amber-300' : 'text-zinc-600'
+                        }
+                      >
+                        {ratio >= 2
+                          ? `⚠ 评分偏置 ${ratio.toFixed(1)}×`
+                          : '正常'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {!categories.length && (
+              <div className="py-8 text-center text-xs text-zinc-600">
+                运行一次机会榜单计算后显示类别占比
+              </div>
+            )}
+          </div>
+        </section>
+        <section className="panel mt-5 p-5">
+          <h2 className="text-sm font-medium">Discovery 请求预算</h2>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {['global', 'A', 'B', 'C', 'D'].map((tier) => (
+              <div
+                className="rounded-md border border-white/[.06] p-3"
+                key={tier}
+              >
+                <div className="mono text-lg text-zinc-200">
+                  {status?.discovery_status?.tier_request_counts[tier] ?? '—'}
+                </div>
+                <div className="mt-1 text-xs text-zinc-600">
+                  {tier === 'global' ? 'Global 无关键词' : `${tier} 级主题`}
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
         <section className="panel mt-5 p-5">
           <div className="flex items-center justify-between">

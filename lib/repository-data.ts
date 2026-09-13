@@ -1,9 +1,11 @@
 import type {
   RecallSource,
+  RepositoryCategory,
   RepositoryApiResponse,
   RepositoryOpportunity,
   VelocitySource,
 } from './repositories';
+import { applyCategoryGuard } from './category-ranking';
 import {
   detectSignals,
   highConversionThreshold,
@@ -237,7 +239,7 @@ async function loadRepositoryRows(ids: string[]) {
   for (let start = 0; start < ids.length; start += 100) {
     rows.push(
       ...(await supabaseRequest<RepositoryRow[]>(
-        `repositories?select=id,github_id,owner,name,full_name,description,description_zh,github_url,stars,forks,open_issues,primary_language,topics,created_at,pushed_at,updated_at,last_snapshot_at&id=in.(${ids.slice(start, start + 100).join(',')})`,
+        `repositories?select=id,github_id,owner,name,full_name,description,description_zh,github_url,stars,forks,open_issues,primary_language,topics,category,discovery_sources,created_at,pushed_at,updated_at,last_snapshot_at&id=in.(${ids.slice(start, start + 100).join(',')})`,
       )),
     );
   }
@@ -262,6 +264,14 @@ async function recordRecallStatus(
   sourceCounts: Record<RecallSource, number>,
   candidateCount: number,
   deduplicatedCount: number,
+  categoryPoolCounts: Partial<Record<RepositoryCategory, number>>,
+  top50CategoryCounts: Partial<Record<RepositoryCategory, number>>,
+  categoryBias: Array<{
+    category: RepositoryCategory;
+    pool_share: number;
+    top50_share: number;
+    ratio: number;
+  }>,
 ) {
   try {
     await supabaseRequest(
@@ -272,6 +282,9 @@ async function recordRecallStatus(
         source_counts: sourceCounts,
         candidate_count: candidateCount,
         deduplicated_count: deduplicatedCount,
+        category_pool_counts: categoryPoolCounts,
+        top50_category_counts: top50CategoryCounts,
+        category_bias: categoryBias,
         computed_at: new Date().toISOString(),
       },
       'resolution=merge-duplicates,return=representation',
@@ -279,6 +292,35 @@ async function recordRecallStatus(
   } catch (error) {
     console.warn('recall_status_log_failed', error);
   }
+}
+
+function categoryCounts(rows: RepositoryOpportunity[]) {
+  const counts: Partial<Record<RepositoryCategory, number>> = {};
+  for (const row of rows)
+    counts[row.category] = (counts[row.category] ?? 0) + 1;
+  return counts;
+}
+
+function categoryBias(
+  poolCounts: Partial<Record<RepositoryCategory, number>>,
+  topCounts: Partial<Record<RepositoryCategory, number>>,
+  poolTotal: number,
+  topTotal: number,
+) {
+  if (!poolTotal || !topTotal) return [];
+  return (Object.keys(poolCounts) as RepositoryCategory[])
+    .map((category) => {
+      const poolShare = (poolCounts[category] ?? 0) / poolTotal;
+      const topShare = (topCounts[category] ?? 0) / topTotal;
+      return {
+        category,
+        pool_share: poolShare,
+        top50_share: topShare,
+        ratio: poolShare > 0 ? topShare / poolShare : 0,
+      };
+    })
+    .filter((item) => item.ratio >= 2)
+    .sort((a, b) => b.ratio - a.ratio);
 }
 
 export function dataStatus(lastSnapshotAt: string | null) {
@@ -295,6 +337,7 @@ export async function getRepositoryOpportunities(options?: {
   owner?: string;
   repo?: string;
   includeSpark?: boolean;
+  applyCategoryLimit?: boolean;
 }): Promise<RepositoryApiResponse> {
   const limit = Math.min(Math.max(options?.limit ?? 100, 1), 500);
   const offset = Math.max(options?.offset ?? 0, 0);
@@ -395,7 +438,20 @@ export async function getRepositoryOpportunities(options?: {
       };
     })
     .sort((a, b) => b.opportunity_score - a.opportunity_score);
-  const rankedData = ranked.slice(offset, offset + limit);
+  const poolCategoryCounts = categoryCounts(ranked);
+  const rawTop50 = ranked.slice(0, 50);
+  const top50CategoryCounts = categoryCounts(rawTop50);
+  const bias = categoryBias(
+    poolCategoryCounts,
+    top50CategoryCounts,
+    ranked.length,
+    rawTop50.length,
+  );
+  const guarded =
+    isDetail || options?.applyCategoryLimit === false
+      ? ranked
+      : applyCategoryGuard(ranked, offset + limit);
+  const rankedData = guarded.slice(offset, offset + limit);
 
   if (options?.includeSpark !== false && rankedData.length) {
     const snapshots = await loadSnapshots(
@@ -420,6 +476,9 @@ export async function getRepositoryOpportunities(options?: {
       sourceCounts,
       candidates.length,
       deduplicatedCount,
+      poolCategoryCounts,
+      top50CategoryCounts,
+      bias,
     );
   const [repositoryCount, snapshotCount, latestSnapshots] = await Promise.all([
     supabaseCount('repositories'),
@@ -441,6 +500,9 @@ export async function getRepositoryOpportunities(options?: {
         source_counts: sourceCounts,
         candidate_count: candidates.length,
         deduplicated_count: deduplicatedCount,
+        category_pool_counts: poolCategoryCounts,
+        top50_category_counts: top50CategoryCounts,
+        category_bias: bias,
       },
     },
   };

@@ -5,19 +5,13 @@ import {
   searchRepositories,
   type GitHubRepository,
 } from './github';
+import {
+  buildDiscoveryPlans,
+  classifyRepository,
+  type DiscoveryTier,
+} from './discovery';
+import type { DiscoverySource } from './repositories';
 import { supabaseRequest } from './supabase';
-
-const KEYWORD_GROUPS = [
-  ['AI Agent', 'MCP', 'LLM', 'RAG', 'Browser Agent', 'Computer Use'],
-  ['Crypto', 'Trading', 'Stablecoin', 'Prediction Market'],
-  [
-    'Database',
-    'Infrastructure',
-    'Automation',
-    'Productivity',
-    'Developer Tools',
-  ],
-] as const;
 
 async function recordRun(
   job: 'discover' | 'snapshot',
@@ -46,28 +40,11 @@ async function recordRun(
   }
 }
 
-function queryPlans() {
-  const hour = new Date().getUTCHours();
-  const groupIndex = hour % KEYWORD_GROUPS.length;
-  const cycle = Math.floor(hour / KEYWORD_GROUPS.length) % 3;
-  const windows = [7, 30, 90];
-  const minimumStars = [10, 50, 100];
-  const plans = KEYWORD_GROUPS[groupIndex].map((keyword, index) => {
-    const days = windows[(index + cycle) % windows.length];
-    const stars = minimumStars[(index + cycle * 2) % minimumStars.length];
-    const date = new Date(Date.now() - days * 86_400_000)
-      .toISOString()
-      .slice(0, 10);
-    const recentActivity = (index + cycle) % 3 === 2;
-    return {
-      query: `"${keyword}" ${recentActivity ? `pushed:>${date}` : `created:>${date}`} stars:>${stars} archived:false`,
-      sort: recentActivity ? ('updated' as const) : ('stars' as const),
-    };
-  });
-  return { groupIndex, plans };
-}
-
-function toRow(repository: GitHubRepository) {
+function toRow(
+  repository: GitHubRepository,
+  sources: Iterable<DiscoverySource>,
+  existingSources: DiscoverySource[] = [],
+) {
   const capturedAt = new Date().toISOString();
   return {
     github_id: repository.id,
@@ -81,6 +58,8 @@ function toRow(repository: GitHubRepository) {
     open_issues: repository.open_issues_count,
     primary_language: repository.language,
     topics: repository.topics ?? [],
+    category: classifyRepository(repository),
+    discovery_sources: [...new Set([...existingSources, ...sources])],
     archived: repository.archived,
     created_at: repository.created_at,
     pushed_at: repository.pushed_at,
@@ -91,13 +70,26 @@ function toRow(repository: GitHubRepository) {
 
 export async function discover() {
   const runId = await recordRun('discover', 'running', {});
-  const found = new Map<number, GitHubRepository>();
+  const found = new Map<
+    number,
+    { repository: GitHubRepository; sources: Set<DiscoverySource> }
+  >();
   const errors: string[] = [];
   let requests = 0;
   try {
-    const { groupIndex, plans } = queryPlans();
+    const plans = buildDiscoveryPlans();
+    const sourceRepositoryIds = new Map<DiscoverySource, Set<number>>();
+    const tierRequestCounts: Record<DiscoveryTier, number> = {
+      global: 0,
+      A: 0,
+      B: 0,
+      C: 0,
+      D: 0,
+    };
+    let shouldStop = false;
     for (const plan of plans) {
-      for (let page = 1; page <= 2; page++) {
+      if (shouldStop) break;
+      for (let page = 1; page <= plan.pages; page++) {
         const rate = getLastGitHubRateLimit();
         if (
           rate.resource === 'search' &&
@@ -105,13 +97,25 @@ export async function discover() {
           rate.remaining <= 2
         ) {
           errors.push('GitHub Search rate limit 接近耗尽，本轮已提前停止');
+          shouldStop = true;
           break;
         }
         try {
           const result = await searchRepositories(plan.query, page, plan.sort);
           requests++;
-          for (const repository of result.items)
-            found.set(repository.id, repository);
+          tierRequestCounts[plan.tier]++;
+          for (const repository of result.items) {
+            const sourceIds = sourceRepositoryIds.get(plan.source) ?? new Set();
+            sourceIds.add(repository.id);
+            sourceRepositoryIds.set(plan.source, sourceIds);
+            const hit = found.get(repository.id) ?? {
+              repository,
+              sources: new Set<DiscoverySource>(),
+            };
+            hit.repository = repository;
+            hit.sources.add(plan.source);
+            found.set(repository.id, hit);
+          }
           if (result.items.length < 50) break;
         } catch (error) {
           errors.push(`${plan.query} page=${page}: ${String(error)}`);
@@ -119,7 +123,23 @@ export async function discover() {
         }
       }
     }
-    const rows = [...found.values()].map(toRow);
+    const existingSources = new Map<number, DiscoverySource[]>();
+    const githubIds = [...found.keys()];
+    for (let start = 0; start < githubIds.length; start += 100) {
+      const existing = await supabaseRequest<
+        Array<{ github_id: number; discovery_sources: DiscoverySource[] }>
+      >(
+        `repositories?select=github_id,discovery_sources&github_id=in.(${githubIds.slice(start, start + 100).join(',')})`,
+      );
+      for (const row of existing)
+        existingSources.set(row.github_id, row.discovery_sources ?? []);
+    }
+    const rows = [...found.values()].map(({ repository, sources }) =>
+      toRow(repository, sources, existingSources.get(repository.id)),
+    );
+    const sourceCounts = Object.fromEntries(
+      [...sourceRepositoryIds].map(([source, ids]) => [source, ids.size]),
+    ) as Partial<Record<DiscoverySource, number>>;
     const storedRows: Array<{
       id: string;
       stars: number;
@@ -156,7 +176,9 @@ export async function discover() {
       {
         processed_count: rows.length,
         request_count: requests,
-        query_group: groupIndex,
+        query_group: new Date().getUTCHours(),
+        discovery_source_counts: sourceCounts,
+        query_tier_counts: tierRequestCounts,
         error_message: errors.length ? errors.slice(-5).join('\n') : null,
         rate_limit_remaining: rate.remaining,
         rate_limit_reset: rate.reset,
@@ -167,7 +189,14 @@ export async function discover() {
       discovered: rows.length,
       requests,
       errors: errors.length,
-      query_group: groupIndex,
+      global_requests: tierRequestCounts.global,
+      topic_requests:
+        tierRequestCounts.A +
+        tierRequestCounts.B +
+        tierRequestCounts.C +
+        tierRequestCounts.D,
+      tier_requests: tierRequestCounts,
+      source_counts: sourceCounts,
     };
   } catch (error) {
     await recordRun(

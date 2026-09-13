@@ -37,11 +37,17 @@ const categories = [
   'Agents',
   'MCP',
   'Developer Tools',
-  'Crypto',
-  'Trading',
   'Data',
   'Infrastructure',
+  'Security',
   'Productivity',
+  'Finance',
+  'Crypto/Web3',
+  'Trading',
+  'Science',
+  'Robotics',
+  'Media',
+  'Other',
 ];
 const categoryZh: Record<string, string> = {
   All: '全部',
@@ -49,22 +55,17 @@ const categoryZh: Record<string, string> = {
   Agents: '智能体',
   MCP: 'MCP',
   'Developer Tools': '开发工具',
-  Crypto: '加密/Web3',
+  'Crypto/Web3': '加密/Web3',
   Trading: '交易',
   Data: '数据',
   Infrastructure: '基础设施',
   Productivity: '效率工具',
-};
-const categoryTerms: Record<string, string[]> = {
-  AI: ['ai', 'llm', 'rag', 'openai', 'claude'],
-  Agents: ['agent', 'computer-use'],
-  MCP: ['mcp'],
-  'Developer Tools': ['developer', 'devtool', 'sdk', 'cli'],
-  Crypto: ['crypto', 'web3', 'stablecoin', 'blockchain'],
-  Trading: ['trading', 'prediction-market', 'polymarket'],
-  Data: ['data', 'database', 'vector'],
-  Infrastructure: ['infrastructure', 'cloud', 'kubernetes'],
-  Productivity: ['productivity', 'automation'],
+  Security: '安全',
+  Finance: '金融科技',
+  Science: '科学计算',
+  Robotics: '机器人',
+  Media: '媒体',
+  Other: '其他',
 };
 const sortOptions = [
   'Opportunity Score',
@@ -389,8 +390,7 @@ export default function Home() {
         `${repo.full_name} ${repo.description ?? ''} ${repo.description_zh ?? ''} ${repo.topics.join(' ')} ${repo.primary_language ?? ''}`.toLowerCase();
       return (
         haystack.includes(lowered) &&
-        (category === 'All' ||
-          categoryTerms[category].some((term) => haystack.includes(term)))
+        (category === 'All' || repo.category === category)
       );
     });
     const nullable = (value: number | null) =>

@@ -6,6 +6,38 @@ export type Signal =
   | 'EARLY SIGNAL';
 
 export type VelocitySource = '1h' | '6h' | '24h' | null;
+export type RepositoryCategory =
+  | 'AI'
+  | 'Agents'
+  | 'MCP'
+  | 'Developer Tools'
+  | 'Data'
+  | 'Infrastructure'
+  | 'Security'
+  | 'Productivity'
+  | 'Finance'
+  | 'Crypto/Web3'
+  | 'Trading'
+  | 'Science'
+  | 'Robotics'
+  | 'Media'
+  | 'Other';
+export type DiscoverySource =
+  | 'global_new'
+  | 'global_active'
+  | 'ai_agent'
+  | 'mcp'
+  | 'developer_tools'
+  | 'data_infrastructure'
+  | 'security'
+  | 'productivity'
+  | 'finance'
+  | 'crypto_web3'
+  | 'trading'
+  | 'science'
+  | 'robotics'
+  | 'media'
+  | 'other_theme';
 export type RecallSource =
   | 'recent_created'
   | 'recent_active'
@@ -29,6 +61,8 @@ export type RepositoryOpportunity = {
   open_issues: number;
   primary_language: string | null;
   topics: string[];
+  category: RepositoryCategory;
+  discovery_sources: DiscoverySource[];
   created_at: string;
   pushed_at: string | null;
   updated_at: string;
@@ -62,6 +96,14 @@ export type RepositoryApiResponse = {
       source_counts: Record<RecallSource, number>;
       candidate_count: number;
       deduplicated_count: number;
+      category_pool_counts?: Partial<Record<RepositoryCategory, number>>;
+      top50_category_counts?: Partial<Record<RepositoryCategory, number>>;
+      category_bias?: Array<{
+        category: RepositoryCategory;
+        pool_share: number;
+        top50_share: number;
+        ratio: number;
+      }>;
     };
   };
 };

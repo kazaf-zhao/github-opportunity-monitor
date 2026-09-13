@@ -13,7 +13,10 @@ export async function GET() {
       { headers: { 'Cache-Control': 'private, max-age=0, must-revalidate' } },
     );
   } catch (error) {
-    console.error('candidate_debug_failed', error);
-    return Response.json({ error: '候选召回失败' }, { status: 503 });
+    console.error('discovery_debug_failed', error);
+    return Response.json(
+      { error: 'Discovery 调试数据读取失败' },
+      { status: 503 },
+    );
   }
 }

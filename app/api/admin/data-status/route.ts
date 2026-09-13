@@ -10,12 +10,22 @@ type Run = {
   started_at: string;
   completed_at: string | null;
   error_message: string | null;
+  discovery_source_counts: Record<string, number>;
+  query_tier_counts: Record<string, number>;
 };
 type RecallStatus = {
   source_counts: Record<string, number>;
   candidate_count: number;
   deduplicated_count: number;
   computed_at: string;
+  category_pool_counts: Record<string, number>;
+  top50_category_counts: Record<string, number>;
+  category_bias: Array<{
+    category: string;
+    pool_share: number;
+    top50_share: number;
+    ratio: number;
+  }>;
 };
 
 export async function GET() {
@@ -33,7 +43,7 @@ export async function GET() {
       supabaseCount('repositories'),
       supabaseCount('repository_snapshots'),
       supabaseRequest<Run[]>(
-        'collector_runs?select=job,status,started_at,completed_at,error_message&order=started_at.desc&limit=20',
+        'collector_runs?select=job,status,started_at,completed_at,error_message,discovery_source_counts,query_tier_counts&order=started_at.desc&limit=20',
       ),
     ]);
     const latest = await supabaseRequest<Array<{ captured_at: string }>>(
@@ -41,7 +51,7 @@ export async function GET() {
     );
     lastSnapshot = latest[0]?.captured_at ?? null;
     const recallRows = await supabaseRequest<RecallStatus[]>(
-      'candidate_recall_status?select=source_counts,candidate_count,deduplicated_count,computed_at&id=eq.true&limit=1',
+      'candidate_recall_status?select=source_counts,candidate_count,deduplicated_count,computed_at,category_pool_counts,top50_category_counts,category_bias&id=eq.true&limit=1',
     );
     recallStatus = recallRows[0] ?? null;
   } catch (error) {
@@ -67,6 +77,12 @@ export async function GET() {
     github_rate_limit: githubRate,
     recent_error: recentFailure?.error_message ?? errors.at(-1) ?? null,
     recall_status: recallStatus,
+    discovery_status: discoveryRun
+      ? {
+          source_counts: discoveryRun.discovery_source_counts ?? {},
+          tier_request_counts: discoveryRun.query_tier_counts ?? {},
+        }
+      : null,
   });
 }
 
