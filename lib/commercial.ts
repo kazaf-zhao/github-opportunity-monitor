@@ -565,7 +565,10 @@ export async function collectCommercialAnalyses(limit = 24) {
   }
 }
 
-export async function getCommercialOpportunities(limit = 100) {
+export async function getCommercialOpportunities(
+  limit = 100,
+  sortBy: 'commercial' | 'money' = 'money',
+) {
   const boundedLimit = Math.min(Math.max(limit, 1), 200);
   const momentum = await getRepositoryOpportunities({
     limit: 500,
@@ -583,7 +586,11 @@ export async function getCommercialOpportunities(limit = 100) {
       repository,
       analysis: repository.commercial,
     }))
-    .sort((a, b) => b.analysis.money_score - a.analysis.money_score)
+    .sort((a, b) =>
+      sortBy === 'commercial'
+        ? b.analysis.commercial_score - a.analysis.commercial_score
+        : b.analysis.money_score - a.analysis.money_score,
+    )
     .slice(0, boundedLimit);
   return {
     data,

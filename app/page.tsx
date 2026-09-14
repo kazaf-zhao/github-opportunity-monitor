@@ -444,6 +444,8 @@ export default function Home() {
   const [response, setResponse] = useState<RepositoryApiResponse | null>(null);
   const [commercialResponse, setCommercialResponse] =
     useState<CommercialApiResponse | null>(null);
+  const [commercialFeedResponse, setCommercialFeedResponse] =
+    useState<CommercialApiResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState('All');
@@ -456,9 +458,15 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
-      const [result, commercialResult] = await Promise.all([
+      const [result, commercialResult, commercialFeedResult] =
+        await Promise.all([
         fetch('/api/repositories', { cache: 'no-store' }),
-        fetch('/api/commercial-opportunities', { cache: 'no-store' }),
+        fetch('/api/commercial-opportunities?sort=money', {
+          cache: 'no-store',
+        }),
+        fetch('/api/commercial-opportunities?sort=commercial', {
+          cache: 'no-store',
+        }),
       ]);
       const body = (await result.json()) as RepositoryApiResponse & {
         error?: string;
@@ -468,6 +476,10 @@ export default function Home() {
       if (commercialResult.ok)
         setCommercialResponse(
           (await commercialResult.json()) as CommercialApiResponse,
+        );
+      if (commercialFeedResult.ok)
+        setCommercialFeedResponse(
+          (await commercialFeedResult.json()) as CommercialApiResponse,
         );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -505,7 +517,9 @@ export default function Home() {
   }, [response, query, category, sort]);
   const commercialRows = useMemo(() => {
     const lowered = query.toLowerCase();
-    return (commercialResponse?.data ?? [])
+    const source =
+      feed === 'commercial' ? commercialFeedResponse : commercialResponse;
+    return (source?.data ?? [])
       .filter(({ repository, analysis }) => {
         const haystack = `${repository.full_name} ${repository.description ?? ''} ${analysis.opportunity_types.join(' ')} ${analysis.what_to_build}`.toLowerCase();
         return (
@@ -518,7 +532,7 @@ export default function Home() {
           ? b.analysis.commercial_score - a.analysis.commercial_score
           : b.analysis.money_score - a.analysis.money_score,
       );
-  }, [commercialResponse, query, category, feed]);
+  }, [commercialResponse, commercialFeedResponse, query, category, feed]);
   const breakoutCount =
     response?.data.filter((repo) => repo.signals.includes('BREAKOUT')).length ??
     0;

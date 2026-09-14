@@ -5,8 +5,11 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
+    const sortBy =
+      url.searchParams.get('sort') === 'commercial' ? 'commercial' : 'money';
     const result = await getCommercialOpportunities(
       Number(url.searchParams.get('limit') ?? 100),
+      sortBy,
     );
     return Response.json(result, {
       headers: { 'Cache-Control': 'private, max-age=0, must-revalidate' },
