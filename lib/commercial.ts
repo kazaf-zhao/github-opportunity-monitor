@@ -15,7 +15,7 @@ import { supabaseCount, supabaseRequest } from './supabase';
 
 const DAY = 86_400_000;
 const ANALYSIS_TTL = 6 * 3_600_000;
-const COMMERCIAL_ANALYSIS_VERSION = 2;
+const COMMERCIAL_ANALYSIS_VERSION = 3;
 
 type GitHubIssue = {
   title: string;
@@ -235,14 +235,16 @@ function inferTypes(input: {
   evidence: CommercialEvidence;
   missingUi: boolean;
   complexity: number;
+  hostedEligible: boolean;
 }) {
-  const { repo, evidence, missingUi, complexity } = input;
+  const { repo, evidence, missingUi, complexity, hostedEligible } = input;
   const types: OpportunityType[] = [];
   const c = evidence;
   if (
-    c.hosted_requests > 0 ||
-    (c.deployment_problems >= 2 && evidence.readme_signals.hosted > 0) ||
-    (complexity >= 4 && evidence.readme_signals.server_runtime > 0)
+    hostedEligible &&
+    (c.hosted_requests > 0 ||
+      (c.deployment_problems >= 2 && evidence.readme_signals.hosted > 0) ||
+      complexity >= 4)
   )
     types.push('Hosted SaaS');
   if (c.api_requests > 0 || evidence.readme_signals.api >= 3)
@@ -294,12 +296,19 @@ export function analyzeCommercialOpportunity(
     10,
     signals.complexity + Math.min(counts.deployment_problems, 5),
   );
-  const hostedStrength = Math.min(
-    100,
-    counts.hosted_requests * 30 +
-      counts.deployment_problems * 10 +
-      signals.hosted * 5,
-  );
+  const hostedEligible =
+    signals.server_runtime > 0 ||
+    ['AI', 'Agents', 'MCP', 'Developer Tools', 'Data', 'Infrastructure'].includes(
+      repo.category,
+    );
+  const hostedStrength = hostedEligible
+    ? Math.min(
+        100,
+        counts.hosted_requests * 30 +
+          counts.deployment_problems * 10 +
+          signals.hosted * 5,
+      )
+    : 0;
   const apiStrength = Math.min(100, counts.api_requests * 35 + signals.api * 4);
   const uiStrength = Math.min(
     100,
@@ -356,7 +365,13 @@ export function analyzeCommercialOpportunity(
         (counts.api_requests > 0 ? 15 : 0),
     ),
   );
-  const types = inferTypes({ repo, evidence, missingUi, complexity });
+  const types = inferTypes({
+    repo,
+    evidence,
+    missingUi,
+    complexity,
+    hostedEligible,
+  });
   const ideas = types.map((type) => buildIdea(type, repo)).slice(0, 3);
   let moneyScore = Math.round(
     0.3 * demandScore +
