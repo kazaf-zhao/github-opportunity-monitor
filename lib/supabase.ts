@@ -21,15 +21,23 @@ export async function supabaseFetch(
   if (!key.startsWith('sb_secret_')) {
     headers.Authorization = `Bearer ${key}`;
   }
-  const response = await fetch(`${url}/rest/v1/${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-    cache: 'no-store',
-  });
-  if (!response.ok)
-    throw new Error(`Supabase ${response.status}: ${await response.text()}`);
-  return response;
+  const serializedBody = body ? JSON.stringify(body) : undefined;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const response = await fetch(`${url}/rest/v1/${path}`, {
+      method,
+      headers,
+      body: serializedBody,
+      cache: 'no-store',
+    });
+    if (response.ok) return response;
+    const details = await response.text();
+    if (![502, 503, 504].includes(response.status) || attempt === 2)
+      throw new Error(
+        `Supabase ${response.status} for ${path.split('?')[0]}: ${details}`,
+      );
+    await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt));
+  }
+  throw new Error(`Supabase request failed for ${path.split('?')[0]}`);
 }
 
 export async function supabaseRequest<T>(
