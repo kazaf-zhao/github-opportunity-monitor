@@ -525,6 +525,28 @@ export async function collectCommercialAnalyses(limit = 24) {
             Date.parse(existingById.get(repo.id)?.analyzed_at ?? '') >=
             ANALYSIS_TTL,
       )
+      .sort((a, b) => {
+        const aRow = existingById.get(a.id);
+        const bRow = existingById.get(b.id);
+        const priority = (
+          row:
+            | {
+                analyzed_at: string;
+                analysis_version: number;
+              }
+            | undefined,
+        ) =>
+          !row
+            ? 0
+            : row.analysis_version !== COMMERCIAL_ANALYSIS_VERSION
+              ? 1
+              : 2;
+        return (
+          priority(aRow) - priority(bRow) ||
+          Date.parse(aRow?.analyzed_at ?? '1970-01-01') -
+            Date.parse(bRow?.analyzed_at ?? '1970-01-01')
+        );
+      })
       .slice(0, boundedLimit);
     let analyzed = 0;
     const errors: string[] = [];
