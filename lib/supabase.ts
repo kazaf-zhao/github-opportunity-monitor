@@ -42,9 +42,9 @@ export async function supabaseRequest<T>(
   return response.status === 204 ? ([] as T) : response.json();
 }
 
-export async function supabaseCount(table: string) {
+export async function supabaseCount(table: string, column = 'id') {
   const response = await supabaseFetch(
-    `${table}?select=id`,
+    `${table}?select=${encodeURIComponent(column)}`,
     'HEAD',
     undefined,
     'count=exact',

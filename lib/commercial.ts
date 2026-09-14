@@ -536,7 +536,10 @@ export async function getCommercialOpportunities(limit = 100) {
   return {
     data,
     meta: {
-      analyzed_count: await supabaseCount('commercial_analyses'),
+      analyzed_count: await supabaseCount(
+        'commercial_analyses',
+        'repository_id',
+      ),
       updated_at: new Date().toISOString(),
     },
   };

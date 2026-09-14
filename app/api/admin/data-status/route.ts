@@ -45,7 +45,7 @@ export async function GET() {
       await Promise.all([
       supabaseCount('repositories'),
       supabaseCount('repository_snapshots'),
-      supabaseCount('commercial_analyses'),
+      supabaseCount('commercial_analyses', 'repository_id'),
       supabaseRequest<Run[]>(
         'collector_runs?select=job,status,started_at,completed_at,error_message,discovery_source_counts,query_tier_counts&order=started_at.desc&limit=20',
       ),
