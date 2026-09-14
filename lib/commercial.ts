@@ -15,7 +15,7 @@ import { supabaseCount, supabaseRequest } from './supabase';
 
 const DAY = 86_400_000;
 const ANALYSIS_TTL = 6 * 3_600_000;
-const COMMERCIAL_ANALYSIS_VERSION = 4;
+const COMMERCIAL_ANALYSIS_VERSION = 5;
 
 type GitHubIssue = {
   title: string;
@@ -409,6 +409,8 @@ export function analyzeCommercialOpportunity(
   const growthEvidence =
     repo.stars_24h !== null
       ? `过去24小时真实增加 ${repo.stars_24h} Star`
+      : repo.velocity !== null
+        ? `基于真实 ${repo.velocity_source ?? '短周期'} Snapshot，当前 Star 速度为 ${repo.velocity.toFixed(1)}/小时`
       : `GitHub Momentum 为 ${repo.opportunity_score}/100，历史增长仍在采集`;
   const issueEvidence = issues.length
     ? `最近30天分析了 ${issues.length} 个 Issue，其中功能/部署/集成/API/UI 需求共 ${realDemandSignals + counts.feature_requests} 个`

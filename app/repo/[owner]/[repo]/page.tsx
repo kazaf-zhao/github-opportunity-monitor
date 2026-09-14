@@ -268,11 +268,12 @@ export default async function Detail({
                   </h2>
                   <BadgeDollarSign className="size-5 text-emerald-300" />
                 </div>
-                <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                <div className="mt-4 grid grid-cols-4 gap-2 text-center">
                   {[
                     ['Money', r.commercial.money_score],
                     ['Demand', r.commercial.demand_score],
                     ['Indie', r.commercial.indie_score],
+                    ['Gap', r.commercial.competition_gap],
                   ].map(([label, value]) => (
                     <div
                       className="rounded-md border border-white/[.06] p-2"

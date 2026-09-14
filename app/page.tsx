@@ -373,10 +373,12 @@ function MoneyRow({
   item,
   index,
   zh,
+  mode,
 }: {
   item: CommercialOpportunity;
   index: number;
   zh: boolean;
+  mode: 'commercial' | 'money';
 }) {
   const { repository: repo, analysis } = item;
   return (
@@ -386,9 +388,11 @@ function MoneyRow({
       </td>
       <td className="py-4 pr-5">
         <div className="mono text-3xl font-semibold text-emerald-300">
-          {analysis.money_score}
+          {mode === 'money' ? analysis.money_score : analysis.commercial_score}
         </div>
-        <div className="mt-1 mono text-[9px] text-zinc-600">MONEY SCORE</div>
+        <div className="mt-1 mono text-[9px] text-zinc-600">
+          {mode === 'money' ? 'MONEY SCORE' : 'COMMERCIAL SCORE'}
+        </div>
       </td>
       <td className="min-w-[260px] py-4 pr-5">
         <Link
@@ -445,7 +449,9 @@ export default function Home() {
   const [category, setCategory] = useState('All');
   const [sort, setSort] = useState('Opportunity Score');
   const [query, setQuery] = useState('');
-  const [feed, setFeed] = useState<'momentum' | 'money'>('momentum');
+  const [feed, setFeed] = useState<'momentum' | 'commercial' | 'money'>(
+    'momentum',
+  );
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -497,16 +503,22 @@ export default function Home() {
               : b.opportunity_score - a.opportunity_score,
     );
   }, [response, query, category, sort]);
-  const moneyRows = useMemo(() => {
+  const commercialRows = useMemo(() => {
     const lowered = query.toLowerCase();
-    return (commercialResponse?.data ?? []).filter(({ repository, analysis }) => {
-      const haystack = `${repository.full_name} ${repository.description ?? ''} ${analysis.opportunity_types.join(' ')} ${analysis.what_to_build}`.toLowerCase();
-      return (
-        haystack.includes(lowered) &&
-        (category === 'All' || repository.category === category)
+    return (commercialResponse?.data ?? [])
+      .filter(({ repository, analysis }) => {
+        const haystack = `${repository.full_name} ${repository.description ?? ''} ${analysis.opportunity_types.join(' ')} ${analysis.what_to_build}`.toLowerCase();
+        return (
+          haystack.includes(lowered) &&
+          (category === 'All' || repository.category === category)
+        );
+      })
+      .sort((a, b) =>
+        feed === 'commercial'
+          ? b.analysis.commercial_score - a.analysis.commercial_score
+          : b.analysis.money_score - a.analysis.money_score,
       );
-    });
-  }, [commercialResponse, query, category]);
+  }, [commercialResponse, query, category, feed]);
   const breakoutCount =
     response?.data.filter((repo) => repo.signals.includes('BREAKOUT')).length ??
     0;
@@ -567,20 +579,24 @@ export default function Home() {
                   : 'REAL GITHUB DATA / LIVE RANKING'}
               </div>
               <h1 className="text-2xl font-semibold sm:text-3xl">
-                {feed === 'money'
+                {feed !== 'momentum'
                   ? zh
-                    ? '开源项目背后的赚钱机会'
-                    : 'Commercial opportunities behind open source'
+                    ? feed === 'money'
+                      ? '开源项目背后的赚钱机会'
+                      : '最值得产品化的开源项目'
+                    : feed === 'money'
+                      ? 'Money opportunities behind open source'
+                      : 'Open-source commercial opportunities'
                   : zh
                     ? '正在起飞的 GitHub 项目'
                     : 'GitHub projects taking off now'}
               </h1>
               <p className="mt-1.5 text-sm text-zinc-500">
                 {zh
-                  ? feed === 'money'
+                  ? feed !== 'momentum'
                     ? `基于真实 README、最近 Issue 与 GitHub 增长信号，筛选适合进一步验证的产品机会。`
                     : `从 ${response?.meta.repository_count?.toLocaleString() ?? '—'} 个真实仓库中识别增长异常。`
-                  : feed === 'money'
+                  : feed !== 'momentum'
                     ? 'Ranked from real README, recent Issues, and observed GitHub momentum.'
                     : `Traction anomalies across ${response?.meta.repository_count?.toLocaleString() ?? '—'} real repositories.`}
               </p>
@@ -596,6 +612,12 @@ export default function Home() {
               onClick={() => setFeed('momentum')}
             >
               GitHub Momentum
+            </button>
+            <button
+              className={`rounded-md px-4 py-2 text-xs ${feed === 'commercial' ? 'bg-fuchsia-300/10 text-fuchsia-200' : 'text-zinc-500'}`}
+              onClick={() => setFeed('commercial')}
+            >
+              Commercial Feed
             </button>
             <button
               className={`flex items-center gap-1.5 rounded-md px-4 py-2 text-xs ${feed === 'money' ? 'bg-emerald-300/10 text-emerald-200' : 'text-zinc-500'}`}
@@ -639,13 +661,13 @@ export default function Home() {
             <div className="border-b border-white/[.07] p-4 sm:px-5">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <div className="flex items-center gap-2">
-                  {feed === 'money' ? (
+                  {feed !== 'momentum' ? (
                     <DollarSign className="size-4 text-emerald-300" />
                   ) : (
                     <Binoculars className="size-4 text-cyan-300" />
                   )}
                   <h2 className="text-sm font-medium">
-                    {feed === 'money'
+                    {feed !== 'momentum'
                       ? zh
                         ? 'Commercial Opportunities'
                         : 'Commercial Opportunities'
@@ -654,7 +676,7 @@ export default function Home() {
                         : 'Opportunity feed'}
                   </h2>
                   <Badge className="bg-white/[.05] mono text-[10px] text-zinc-500">
-                    {feed === 'money' ? moneyRows.length : rows.length}
+                    {feed !== 'momentum' ? commercialRows.length : rows.length}
                   </Badge>
                 </div>
                 {feed === 'momentum' && <label className="flex items-center gap-2 text-xs text-zinc-500">
@@ -702,7 +724,7 @@ export default function Home() {
                   ? '正在读取 Supabase 真实数据…'
                   : 'Loading real Supabase data…'}
               </div>
-            ) : feed === 'money' && moneyRows.length === 0 ? (
+            ) : feed !== 'momentum' && commercialRows.length === 0 ? (
               <div className="py-20 text-center text-sm text-zinc-500">
                 <DollarSign className="mx-auto mb-3" />
                 {zh
@@ -720,13 +742,15 @@ export default function Home() {
                     ? '数据库还没有仓库，请前往数据采集页运行首次发现。'
                     : 'No repositories yet. Run discovery from Data Status.'}
               </div>
-            ) : feed === 'money' ? (
+            ) : feed !== 'momentum' ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead>
                     <tr className="border-b border-white/[.07] bg-black/10 text-xs text-zinc-500">
                       <th className="p-4">#</th>
-                      <th>Money Score</th>
+                      <th>
+                        {feed === 'money' ? 'Money Score' : 'Commercial Score'}
+                      </th>
                       <th>{zh ? '机会 / Repo' : 'Opportunity / Repo'}</th>
                       <th>Why Now</th>
                       <th>What To Build</th>
@@ -734,11 +758,12 @@ export default function Home() {
                     </tr>
                   </thead>
                   <tbody>
-                    {moneyRows.map((item, index) => (
+                    {commercialRows.map((item, index) => (
                       <MoneyRow
                         index={index + 1}
                         item={item}
                         key={item.repository.id}
+                        mode={feed}
                         zh={zh}
                       />
                     ))}
