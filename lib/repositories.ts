@@ -47,6 +47,65 @@ export type RecallSource =
   | 'high_acceleration'
   | 'high_relative_growth';
 
+export type OpportunityType =
+  | 'Hosted SaaS'
+  | 'API Wrapper'
+  | 'UI Wrapper'
+  | 'Integration'
+  | 'Vertical SaaS'
+  | 'Developer Tool'
+  | 'Data Service'
+  | 'Automation Service'
+  | 'Plugin'
+  | 'Enterprise Version'
+  | 'Consulting'
+  | 'No Clear Opportunity';
+
+export type CommercialDifficulty = 'Easy' | 'Medium' | 'Hard';
+
+export type CommercialIdea = {
+  type: OpportunityType;
+  product: string;
+  customer: string;
+  reason: string;
+  pricing: string;
+};
+
+export type CommercialEvidence = {
+  issues_analyzed: number;
+  feature_requests: number;
+  deployment_problems: number;
+  integration_requests: number;
+  hosted_requests: number;
+  api_requests: number;
+  ui_requests: number;
+  bugs: number;
+  documentation_problems: number;
+  readme_signals: Record<string, number>;
+  issue_examples: Partial<Record<string, string[]>>;
+};
+
+export type CommercialAnalysis = {
+  repository_id: string;
+  analyzed_at: string;
+  issue_window_start: string;
+  demand_score: number;
+  commercial_score: number;
+  indie_score: number;
+  competition_gap: number;
+  money_score: number;
+  opportunity_types: OpportunityType[];
+  monetization_ideas: CommercialIdea[];
+  why_now: string;
+  user_pain: string;
+  what_to_build: string;
+  who_pays: string;
+  monetization: string;
+  difficulty: CommercialDifficulty;
+  estimated_mvp: string;
+  evidence: CommercialEvidence;
+};
+
 export type RepositoryOpportunity = {
   id: string;
   github_id: number;
@@ -82,6 +141,20 @@ export type RepositoryOpportunity = {
   recall_sources: RecallSource[];
   spark: number[];
   spark_timestamps: string[];
+  commercial: CommercialAnalysis | null;
+};
+
+export type CommercialOpportunity = {
+  repository: RepositoryOpportunity;
+  analysis: CommercialAnalysis;
+};
+
+export type CommercialApiResponse = {
+  data: CommercialOpportunity[];
+  meta: {
+    analyzed_count: number;
+    updated_at: string;
+  };
 };
 
 export type RepositoryApiResponse = {

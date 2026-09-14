@@ -1,4 +1,5 @@
 import { discover, snapshot } from '@/lib/collector';
+import { collectCommercialAnalyses } from '@/lib/commercial';
 import { checkGitHub } from '@/lib/github';
 import { supabaseCount, supabaseRequest } from '@/lib/supabase';
 
@@ -33,19 +34,22 @@ export async function GET() {
   let github: '正常' | '异常' = '正常';
   let repositoryCount = 0;
   let snapshotCount = 0;
+  let commercialAnalysisCount = 0;
   let lastSnapshot: string | null = null;
   let runs: Run[] = [];
   let recallStatus: RecallStatus | null = null;
   let githubRate: Awaited<ReturnType<typeof checkGitHub>> | null = null;
   const errors: string[] = [];
   try {
-    [repositoryCount, snapshotCount, runs] = await Promise.all([
+    [repositoryCount, snapshotCount, commercialAnalysisCount, runs] =
+      await Promise.all([
       supabaseCount('repositories'),
       supabaseCount('repository_snapshots'),
+      supabaseCount('commercial_analyses'),
       supabaseRequest<Run[]>(
         'collector_runs?select=job,status,started_at,completed_at,error_message,discovery_source_counts,query_tier_counts&order=started_at.desc&limit=20',
       ),
-    ]);
+      ]);
     const latest = await supabaseRequest<Array<{ captured_at: string }>>(
       'repository_snapshots?select=captured_at&order=captured_at.desc&limit=1',
     );
@@ -65,6 +69,7 @@ export async function GET() {
     errors.push(String(error));
   }
   const discoveryRun = runs.find((run) => run.job === 'discover');
+  const commercialRun = runs.find((run) => run.job === 'commercial');
   // Only surface an error when the latest run for that collector job failed.
   // A later successful run means the older error has recovered and should not
   // keep the production status page in a misleading error state.
@@ -80,9 +85,12 @@ export async function GET() {
     supabase,
     repository_count: repositoryCount,
     snapshot_count: snapshotCount,
+    commercial_analysis_count: commercialAnalysisCount,
     last_discovery_at:
       discoveryRun?.completed_at ?? discoveryRun?.started_at ?? null,
     last_snapshot_at: lastSnapshot,
+    last_commercial_at:
+      commercialRun?.completed_at ?? commercialRun?.started_at ?? null,
     github_rate_limit: githubRate,
     recent_error: recentFailure?.error_message ?? errors.at(-1) ?? null,
     recall_status: recallStatus,
@@ -103,6 +111,8 @@ export async function POST(request: Request) {
     const { action } = (await request.json()) as { action?: string };
     if (action === 'discover') return Response.json(await discover());
     if (action === 'snapshot') return Response.json(await snapshot());
+    if (action === 'commercial')
+      return Response.json(await collectCommercialAnalyses(24));
     return Response.json({ error: 'Unknown action' }, { status: 400 });
   } catch (error) {
     console.error('admin_collector_failed', error);

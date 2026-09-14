@@ -18,8 +18,10 @@ type Status = {
   supabase: '正常' | '异常';
   repository_count: number;
   snapshot_count: number;
+  commercial_analysis_count: number;
   last_discovery_at: string | null;
   last_snapshot_at: string | null;
+  last_commercial_at: string | null;
   github_rate_limit: { remaining: number; limit: number; reset: string } | null;
   recent_error: string | null;
   recall_status: {
@@ -47,7 +49,9 @@ const showTime = (value: string | null) =>
 export default function DataStatusPage() {
   const [status, setStatus] = useState<Status | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [running, setRunning] = useState<'discover' | 'snapshot' | null>(null);
+  const [running, setRunning] = useState<
+    'discover' | 'snapshot' | 'commercial' | null
+  >(null);
   const load = useCallback(async () => {
     try {
       const response = await fetch('/api/admin/data-status', {
@@ -65,7 +69,7 @@ export default function DataStatusPage() {
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
   }, [load]);
-  const run = async (action: 'discover' | 'snapshot') => {
+  const run = async (action: 'discover' | 'snapshot' | 'commercial') => {
     setRunning(action);
     setError(null);
     try {
@@ -138,7 +142,7 @@ export default function DataStatusPage() {
             {error}
           </div>
         )}
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {(
             [
               [GitFork, 'GitHub API', status?.github ?? '检查中'],
@@ -152,6 +156,13 @@ export default function DataStatusPage() {
                 Database,
                 'Snapshot 总数',
                 status ? status.snapshot_count.toLocaleString() : '—',
+              ],
+              [
+                Radar,
+                '商业分析',
+                status
+                  ? status.commercial_analysis_count.toLocaleString()
+                  : '—',
               ],
             ] as Array<[LucideIcon, string, ReactNode]>
           ).map(([Icon, label, value]) => (
@@ -299,6 +310,12 @@ export default function DataStatusPage() {
               </div>
             </div>
             <div>
+              <div className="text-xs text-zinc-600">最近 Commercial 分析</div>
+              <div className="mt-2 mono text-sm">
+                {showTime(status?.last_commercial_at ?? null)}
+              </div>
+            </div>
+            <div>
               <div className="text-xs text-zinc-600">GitHub API 剩余额度</div>
               <div className="mt-2 mono text-sm">
                 {status?.github_rate_limit
@@ -336,6 +353,14 @@ export default function DataStatusPage() {
           >
             {running === 'snapshot' && <RefreshCw className="animate-spin" />}
             立即采集 Snapshot
+          </Button>
+          <Button
+            disabled={running !== null}
+            onClick={() => void run('commercial')}
+            variant="outline"
+          >
+            {running === 'commercial' && <RefreshCw className="animate-spin" />}
+            立即分析商业机会
           </Button>
           <p className="self-center text-xs text-zinc-600">
             操作会调用真实 Collector；完成后本页自动刷新。

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import {
   ArrowLeft,
+  BadgeDollarSign,
   Calendar,
   ExternalLink,
   GitFork,
@@ -136,18 +137,24 @@ export default async function Detail({
               ))}
             </div>
           </div>
-          <div className="panel min-w-[260px] p-4">
-            <div className="flex items-end justify-between">
+          <div className="panel min-w-[300px] p-4">
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <div className="text-xs text-zinc-500">
-                  {zh ? '机会评分' : 'Opportunity score'}
+                  GitHub Momentum
                 </div>
                 <div className="mt-1 mono text-4xl font-semibold text-cyan-300">
                   {r.opportunity_score}
                   <span className="text-base text-zinc-600">/100</span>
                 </div>
               </div>
-              <TrendingUp className="mb-2 size-6 text-cyan-300" />
+              <div>
+                <div className="text-xs text-zinc-500">Commercial</div>
+                <div className="mt-1 mono text-4xl font-semibold text-fuchsia-300">
+                  {r.commercial?.commercial_score ?? '—'}
+                  <span className="text-base text-zinc-600">/100</span>
+                </div>
+              </div>
             </div>
             <Progress
               className="mt-4 h-1.5 bg-white/10"
@@ -253,6 +260,45 @@ export default async function Detail({
             </section>
           </div>
           <aside className="space-y-5">
+            {r.commercial && (
+              <section className="panel border-emerald-300/15 p-5">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-medium text-emerald-200">
+                    Money Radar
+                  </h2>
+                  <BadgeDollarSign className="size-5 text-emerald-300" />
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                  {[
+                    ['Money', r.commercial.money_score],
+                    ['Demand', r.commercial.demand_score],
+                    ['Indie', r.commercial.indie_score],
+                  ].map(([label, value]) => (
+                    <div
+                      className="rounded-md border border-white/[.06] p-2"
+                      key={String(label)}
+                    >
+                      <div className="mono text-xl text-emerald-300">
+                        {value}
+                      </div>
+                      <div className="mono text-[9px] text-zinc-600">
+                        {label}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 flex flex-wrap gap-1.5">
+                  {r.commercial.opportunity_types.map((type) => (
+                    <Badge
+                      className="border-fuchsia-300/20 bg-fuchsia-300/[.06] text-[9px] text-fuchsia-200"
+                      key={type}
+                    >
+                      {type}
+                    </Badge>
+                  ))}
+                </div>
+              </section>
+            )}
             <section className="panel p-5">
               <h2 className="text-sm font-medium">
                 {zh ? '仓库概况' : 'Repository profile'}
@@ -277,40 +323,107 @@ export default async function Detail({
                 ))}
               </div>
             </section>
-            <section className="panel p-5">
-              <h2 className="text-sm font-medium">
-                {zh ? 'AI 分析预留' : 'Future AI analysis'}
-              </h2>
-              <div className="mt-4 space-y-3 text-xs text-zinc-600">
-                {(zh
-                  ? [
-                      '它做什么',
-                      '为何流行',
-                      '商业潜力',
-                      '可行的 SaaS 机会',
-                      '竞品',
-                      '风险',
-                    ]
-                  : [
-                      'What it does',
-                      'Why it is trending',
-                      'Commercial potential',
-                      'Possible SaaS opportunities',
-                      'Competitors',
-                      'Risks',
-                    ]
-                ).map((item) => (
-                  <div
-                    className="rounded-md border border-dashed border-white/10 p-3"
-                    key={item}
-                  >
-                    {item} · {zh ? '待接入' : 'Reserved'}
-                  </div>
-                ))}
-              </div>
-            </section>
+            {!r.commercial && (
+              <section className="panel p-5 text-sm text-zinc-500">
+                {zh
+                  ? '商业机会分析正在采集。系统会读取真实 README 与最近 30 天 Issue 标题。'
+                  : 'Commercial analysis is collecting real README and recent Issue-title evidence.'}
+              </section>
+            )}
           </aside>
         </div>
+        {r.commercial && (
+          <section className="panel mt-5 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-medium">
+                  {zh ? '商业机会诊断' : 'Commercial opportunity diagnosis'}
+                </h2>
+                <p className="mt-1 text-xs text-zinc-600">
+                  {zh
+                    ? '基于 README 和最近 30 天非 PR Issue 标题的规则分析，不是收入预测。'
+                    : 'Rule-based analysis of README and 30-day non-PR Issue titles; not a revenue forecast.'}
+                </p>
+              </div>
+              <div className="mono text-xs text-zinc-500">
+                {r.commercial.difficulty} · MVP {r.commercial.estimated_mvp}
+              </div>
+            </div>
+            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              {[
+                ['Why Now', r.commercial.why_now],
+                ['User Pain', r.commercial.user_pain],
+                ['What To Build', r.commercial.what_to_build],
+                ['Who Pays', r.commercial.who_pays],
+                ['Monetization', r.commercial.monetization],
+              ].map(([label, value]) => (
+                <div
+                  className="rounded-md border border-white/[.06] bg-black/10 p-4"
+                  key={label}
+                >
+                  <div className="mono text-[10px] uppercase text-fuchsia-300">
+                    {label}
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-zinc-400">{value}</p>
+                </div>
+              ))}
+            </div>
+            <h3 className="mt-7 text-sm font-medium">
+              {zh ? '可以怎么赚钱？' : 'Monetization ideas'}
+            </h3>
+            <div className="mt-3 grid gap-3 lg:grid-cols-3">
+              {r.commercial.monetization_ideas.map((idea, index) => (
+                <div
+                  className="rounded-lg border border-emerald-300/10 bg-emerald-300/[.025] p-4"
+                  key={`${idea.type}-${index}`}
+                >
+                  <div className="mono text-[10px] text-emerald-300">
+                    {String(index + 1).padStart(2, '0')} / {idea.type}
+                  </div>
+                  <div className="mt-3 text-sm text-zinc-200">
+                    {idea.product}
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-zinc-500">
+                    <span className="text-zinc-300">客户：</span>
+                    {idea.customer}
+                    <br />
+                    <span className="text-zinc-300">依据：</span>
+                    {idea.reason}
+                    <br />
+                    <span className="text-zinc-300">收费：</span>
+                    {idea.pricing}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-7 overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="border-b border-white/[.07] text-zinc-600">
+                  <tr>
+                    <th className="pb-3">Issues analyzed</th>
+                    <th className="pb-3">Feature</th>
+                    <th className="pb-3">Deployment</th>
+                    <th className="pb-3">Integration</th>
+                    <th className="pb-3">Hosted</th>
+                    <th className="pb-3">API</th>
+                    <th className="pb-3">UI</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="mono text-zinc-300">
+                    <td className="pt-3">{r.commercial.evidence.issues_analyzed}</td>
+                    <td className="pt-3">{r.commercial.evidence.feature_requests}</td>
+                    <td className="pt-3">{r.commercial.evidence.deployment_problems}</td>
+                    <td className="pt-3">{r.commercial.evidence.integration_requests}</td>
+                    <td className="pt-3">{r.commercial.evidence.hosted_requests}</td>
+                    <td className="pt-3">{r.commercial.evidence.api_requests}</td>
+                    <td className="pt-3">{r.commercial.evidence.ui_requests}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
       </div>
     </main>
   );

@@ -1,4 +1,5 @@
 import type {
+  CommercialAnalysis,
   RecallSource,
   RepositoryCategory,
   RepositoryApiResponse,
@@ -31,6 +32,7 @@ type RepositoryRow = Omit<
   | 'recall_sources'
   | 'spark'
   | 'spark_timestamps'
+  | 'commercial'
 >;
 export type SnapshotRow = {
   repository_id: string;
@@ -260,6 +262,18 @@ async function loadSnapshotMetrics(ids: string[]) {
   return rows;
 }
 
+async function loadCommercialAnalyses(ids: string[]) {
+  const rows: CommercialAnalysis[] = [];
+  for (let start = 0; start < ids.length; start += 100) {
+    rows.push(
+      ...(await supabaseRequest<CommercialAnalysis[]>(
+        `commercial_analyses?select=repository_id,analyzed_at,issue_window_start,demand_score,commercial_score,indie_score,competition_gap,money_score,opportunity_types,monetization_ideas,why_now,user_pain,what_to_build,who_pays,monetization,difficulty,estimated_mvp,evidence&repository_id=in.(${ids.slice(start, start + 100).join(',')})`,
+      )),
+    );
+  }
+  return rows;
+}
+
 async function recordRecallStatus(
   sourceCounts: Record<RecallSource, number>,
   candidateCount: number,
@@ -337,6 +351,7 @@ export async function getRepositoryOpportunities(options?: {
   owner?: string;
   repo?: string;
   includeSpark?: boolean;
+  includeCommercial?: boolean;
   applyCategoryLimit?: boolean;
 }): Promise<RepositoryApiResponse> {
   const limit = Math.min(Math.max(options?.limit ?? 100, 1), 500);
@@ -435,6 +450,7 @@ export async function getRepositoryOpportunities(options?: {
         recall_sources: [...(candidateById.get(row.id)?.recall_sources ?? [])],
         spark: [],
         spark_timestamps: [],
+        commercial: null,
       };
     })
     .sort((a, b) => b.opportunity_score - a.opportunity_score);
@@ -452,6 +468,17 @@ export async function getRepositoryOpportunities(options?: {
       ? ranked
       : applyCategoryGuard(ranked, offset + limit);
   const rankedData = guarded.slice(offset, offset + limit);
+
+  if (options?.includeCommercial !== false && rankedData.length) {
+    const analyses = await loadCommercialAnalyses(
+      rankedData.map((row) => row.id),
+    );
+    const byRepository = new Map(
+      analyses.map((analysis) => [analysis.repository_id, analysis]),
+    );
+    for (const row of rankedData)
+      row.commercial = byRepository.get(row.id) ?? null;
+  }
 
   if (options?.includeSpark !== false && rankedData.length) {
     const snapshots = await loadSnapshots(

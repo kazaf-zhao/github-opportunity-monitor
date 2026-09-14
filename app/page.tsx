@@ -10,6 +10,7 @@ import {
   BookMarked,
   CircleDot,
   Database,
+  DollarSign,
   Flame,
   Gauge,
   GitFork,
@@ -29,6 +30,8 @@ import {
   signalZh,
   type RepositoryApiResponse,
   type RepositoryOpportunity,
+  type CommercialApiResponse,
+  type CommercialOpportunity,
 } from '@/lib/repositories';
 
 const categories = [
@@ -292,8 +295,19 @@ function RepoRow({
           </div>
         </div>
       </td>
-      <td>
-        <Score value={repo.opportunity_score} />
+      <td aria-label={zh ? '热度与商业评分' : 'Momentum and commercial scores'}>
+        <div className="space-y-2">
+          <div>
+            <div className="mono text-[9px] uppercase text-zinc-600">
+              GitHub Momentum
+            </div>
+            <Score value={repo.opportunity_score} />
+          </div>
+          <div className="mono text-[10px] text-fuchsia-300">
+            Commercial&nbsp;
+            {repo.commercial?.commercial_score ?? (zh ? '分析中' : 'Pending')}
+          </div>
+        </div>
       </td>
       <td>
         <div className="mono text-sm text-cyan-300">
@@ -355,24 +369,100 @@ function RepoRow({
   );
 }
 
+function MoneyRow({
+  item,
+  index,
+  zh,
+}: {
+  item: CommercialOpportunity;
+  index: number;
+  zh: boolean;
+}) {
+  const { repository: repo, analysis } = item;
+  return (
+    <tr className="border-b border-white/[.055] align-top hover:bg-white/[.025]">
+      <td className="p-4 mono text-xs text-zinc-600">
+        {String(index).padStart(2, '0')}
+      </td>
+      <td className="py-4 pr-5">
+        <div className="mono text-3xl font-semibold text-emerald-300">
+          {analysis.money_score}
+        </div>
+        <div className="mt-1 mono text-[9px] text-zinc-600">MONEY SCORE</div>
+      </td>
+      <td className="min-w-[260px] py-4 pr-5">
+        <Link
+          className="font-medium hover:text-cyan-300"
+          href={`/repo/${repo.owner}/${repo.name}${zh ? '' : '?lang=en'}`}
+        >
+          {repo.full_name}
+        </Link>
+        <div className="mt-2 flex flex-wrap gap-1">
+          {analysis.opportunity_types.map((type) => (
+            <Badge
+              className="border-fuchsia-300/20 bg-fuchsia-300/[.07] text-[9px] text-fuchsia-200"
+              key={type}
+            >
+              {type}
+            </Badge>
+          ))}
+        </div>
+        <div className="mt-3 flex gap-4 mono text-[10px] text-zinc-500">
+          <span>Momentum {repo.opportunity_score}</span>
+          <span>Commercial {analysis.commercial_score}</span>
+          <span>Indie {analysis.indie_score}</span>
+        </div>
+      </td>
+      <td className="min-w-[260px] py-4 pr-5 text-xs leading-5 text-zinc-400">
+        {analysis.why_now}
+      </td>
+      <td className="min-w-[260px] py-4 pr-5">
+        <div className="text-sm text-zinc-200">{analysis.what_to_build}</div>
+        <div className="mt-2 text-xs text-zinc-500">
+          {zh ? '谁付钱：' : 'Who pays: '}
+          {analysis.who_pays}
+        </div>
+      </td>
+      <td className="py-4 pr-5">
+        <Badge className="border-white/10 bg-white/[.04] text-zinc-300">
+          {analysis.difficulty}
+        </Badge>
+        <div className="mt-2 whitespace-nowrap mono text-[10px] text-zinc-500">
+          MVP {analysis.estimated_mvp}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 export default function Home() {
   const [zh, setZh] = useState(true);
   const [response, setResponse] = useState<RepositoryApiResponse | null>(null);
+  const [commercialResponse, setCommercialResponse] =
+    useState<CommercialApiResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState('All');
   const [sort, setSort] = useState('Opportunity Score');
   const [query, setQuery] = useState('');
+  const [feed, setFeed] = useState<'momentum' | 'money'>('momentum');
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await fetch('/api/repositories', { cache: 'no-store' });
+      const [result, commercialResult] = await Promise.all([
+        fetch('/api/repositories', { cache: 'no-store' }),
+        fetch('/api/commercial-opportunities', { cache: 'no-store' }),
+      ]);
       const body = (await result.json()) as RepositoryApiResponse & {
         error?: string;
       };
       if (!result.ok) throw new Error(body.error || 'API error');
       setResponse(body);
+      if (commercialResult.ok)
+        setCommercialResponse(
+          (await commercialResult.json()) as CommercialApiResponse,
+        );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -407,6 +497,16 @@ export default function Home() {
               : b.opportunity_score - a.opportunity_score,
     );
   }, [response, query, category, sort]);
+  const moneyRows = useMemo(() => {
+    const lowered = query.toLowerCase();
+    return (commercialResponse?.data ?? []).filter(({ repository, analysis }) => {
+      const haystack = `${repository.full_name} ${repository.description ?? ''} ${analysis.opportunity_types.join(' ')} ${analysis.what_to_build}`.toLowerCase();
+      return (
+        haystack.includes(lowered) &&
+        (category === 'All' || repository.category === category)
+      );
+    });
+  }, [commercialResponse, query, category]);
   const breakoutCount =
     response?.data.filter((repo) => repo.signals.includes('BREAKOUT')).length ??
     0;
@@ -467,20 +567,42 @@ export default function Home() {
                   : 'REAL GITHUB DATA / LIVE RANKING'}
               </div>
               <h1 className="text-2xl font-semibold sm:text-3xl">
-                {zh
-                  ? '正在起飞的 GitHub 项目'
-                  : 'GitHub projects taking off now'}
+                {feed === 'money'
+                  ? zh
+                    ? '开源项目背后的赚钱机会'
+                    : 'Commercial opportunities behind open source'
+                  : zh
+                    ? '正在起飞的 GitHub 项目'
+                    : 'GitHub projects taking off now'}
               </h1>
               <p className="mt-1.5 text-sm text-zinc-500">
                 {zh
-                  ? `从 ${response?.meta.repository_count?.toLocaleString() ?? '—'} 个真实仓库中识别增长异常。`
-                  : `Traction anomalies across ${response?.meta.repository_count?.toLocaleString() ?? '—'} real repositories.`}
+                  ? feed === 'money'
+                    ? `基于真实 README、最近 Issue 与 GitHub 增长信号，筛选适合进一步验证的产品机会。`
+                    : `从 ${response?.meta.repository_count?.toLocaleString() ?? '—'} 个真实仓库中识别增长异常。`
+                  : feed === 'money'
+                    ? 'Ranked from real README, recent Issues, and observed GitHub momentum.'
+                    : `Traction anomalies across ${response?.meta.repository_count?.toLocaleString() ?? '—'} real repositories.`}
               </p>
             </div>
             <div className="mono text-[10px] text-zinc-600">
               {zh ? '数据更新时间：' : 'Data fetched: '}
               {relativeTime(response?.meta.updated_at ?? null, zh)}
             </div>
+          </div>
+          <div className="mb-5 inline-flex rounded-lg border border-white/[.07] bg-black/20 p-1">
+            <button
+              className={`rounded-md px-4 py-2 text-xs ${feed === 'momentum' ? 'bg-cyan-300/10 text-cyan-200' : 'text-zinc-500'}`}
+              onClick={() => setFeed('momentum')}
+            >
+              GitHub Momentum
+            </button>
+            <button
+              className={`flex items-center gap-1.5 rounded-md px-4 py-2 text-xs ${feed === 'money' ? 'bg-emerald-300/10 text-emerald-200' : 'text-zinc-500'}`}
+              onClick={() => setFeed('money')}
+            >
+              <DollarSign className="size-3.5" /> Money Radar
+            </button>
           </div>
           <section className="mb-5 grid gap-3 md:grid-cols-3">
             {(
@@ -517,15 +639,25 @@ export default function Home() {
             <div className="border-b border-white/[.07] p-4 sm:px-5">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <div className="flex items-center gap-2">
-                  <Binoculars className="size-4 text-cyan-300" />
+                  {feed === 'money' ? (
+                    <DollarSign className="size-4 text-emerald-300" />
+                  ) : (
+                    <Binoculars className="size-4 text-cyan-300" />
+                  )}
                   <h2 className="text-sm font-medium">
-                    {zh ? '机会榜单' : 'Opportunity feed'}
+                    {feed === 'money'
+                      ? zh
+                        ? 'Commercial Opportunities'
+                        : 'Commercial Opportunities'
+                      : zh
+                        ? '机会榜单'
+                        : 'Opportunity feed'}
                   </h2>
                   <Badge className="bg-white/[.05] mono text-[10px] text-zinc-500">
-                    {rows.length}
+                    {feed === 'money' ? moneyRows.length : rows.length}
                   </Badge>
                 </div>
-                <label className="flex items-center gap-2 text-xs text-zinc-500">
+                {feed === 'momentum' && <label className="flex items-center gap-2 text-xs text-zinc-500">
                   {zh ? '排序' : 'Sort'}
                   <select
                     className="h-9 rounded-md border border-white/[.07] bg-[#11141b] px-3 text-zinc-200"
@@ -538,7 +670,7 @@ export default function Home() {
                       </option>
                     ))}
                   </select>
-                </label>
+                </label>}
               </div>
               <div className="mt-4 flex gap-1.5 overflow-x-auto">
                 {categories.map((item) => (
@@ -570,7 +702,14 @@ export default function Home() {
                   ? '正在读取 Supabase 真实数据…'
                   : 'Loading real Supabase data…'}
               </div>
-            ) : rows.length === 0 ? (
+            ) : feed === 'money' && moneyRows.length === 0 ? (
+              <div className="py-20 text-center text-sm text-zinc-500">
+                <DollarSign className="mx-auto mb-3" />
+                {zh
+                  ? '商业分析正在采集。可前往数据采集页立即运行。'
+                  : 'Commercial analysis is collecting. Run it from Data Status.'}
+              </div>
+            ) : feed === 'momentum' && rows.length === 0 ? (
               <div className="py-20 text-center text-sm text-zinc-500">
                 <Search className="mx-auto mb-3" />
                 {response?.data.length
@@ -581,6 +720,31 @@ export default function Home() {
                     ? '数据库还没有仓库，请前往数据采集页运行首次发现。'
                     : 'No repositories yet. Run discovery from Data Status.'}
               </div>
+            ) : feed === 'money' ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b border-white/[.07] bg-black/10 text-xs text-zinc-500">
+                      <th className="p-4">#</th>
+                      <th>Money Score</th>
+                      <th>{zh ? '机会 / Repo' : 'Opportunity / Repo'}</th>
+                      <th>Why Now</th>
+                      <th>What To Build</th>
+                      <th>Difficulty</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {moneyRows.map((item, index) => (
+                      <MoneyRow
+                        index={index + 1}
+                        item={item}
+                        key={item.repository.id}
+                        zh={zh}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
@@ -588,7 +752,7 @@ export default function Home() {
                     <tr className="border-b border-white/[.07] bg-black/10 text-xs text-zinc-500">
                       <th className="p-4">#</th>
                       <th>{zh ? '仓库 / 中文简介' : 'Repository'}</th>
-                      <th>{zh ? '机会评分' : 'Opportunity'}</th>
+                      <th>{zh ? 'Momentum / Commercial' : 'Momentum / Commercial'}</th>
                       <th>{zh ? 'Star 速度' : 'Velocity'}</th>
                       <th className="hidden xl:table-cell">
                         {zh ? '真实趋势' : 'Observed trend'}

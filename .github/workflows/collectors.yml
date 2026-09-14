@@ -5,6 +5,7 @@ on:
     - cron: '5 * * * *'
     - cron: '15 * * * *'
     - cron: '45 * * * *'
+    - cron: '25 */6 * * *'
   workflow_dispatch:
 
 concurrency:
@@ -47,6 +48,19 @@ jobs:
           curl --fail-with-body --retry 3 --retry-all-errors \
             --header "Authorization: Bearer $CRON_SECRET" \
             "$APP_URL/api/cron/snapshots"
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  commercial:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '25 */6 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Analyze commercial opportunities
+        run: |
+          curl --fail-with-body --retry 3 --retry-all-errors \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/commercial"
         env:
           APP_URL: ${{ secrets.APP_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
