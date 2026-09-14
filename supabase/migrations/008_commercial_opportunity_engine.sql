@@ -1,5 +1,6 @@
 create table if not exists commercial_analyses (
   repository_id uuid primary key references repositories(id) on delete cascade,
+  analysis_version integer not null default 1,
   analyzed_at timestamptz not null default now(),
   issue_window_start timestamptz not null,
   demand_score smallint not null check (demand_score between 0 and 100),
@@ -27,6 +28,8 @@ create index if not exists idx_commercial_analyses_types
   on commercial_analyses using gin(opportunity_types);
 
 alter table commercial_analyses enable row level security;
+alter table commercial_analyses
+  add column if not exists analysis_version integer not null default 1;
 grant select, insert, update on commercial_analyses to service_role;
 
 alter table collector_runs drop constraint if exists collector_runs_job_check;

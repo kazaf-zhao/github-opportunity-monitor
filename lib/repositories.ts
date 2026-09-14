@@ -87,6 +87,7 @@ export type CommercialEvidence = {
 
 export type CommercialAnalysis = {
   repository_id: string;
+  analysis_version: number;
   analyzed_at: string;
   issue_window_start: string;
   demand_score: number;

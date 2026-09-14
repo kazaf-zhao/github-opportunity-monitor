@@ -15,6 +15,7 @@ import { supabaseCount, supabaseRequest } from './supabase';
 
 const DAY = 86_400_000;
 const ANALYSIS_TTL = 6 * 3_600_000;
+const COMMERCIAL_ANALYSIS_VERSION = 2;
 
 type GitHubIssue = {
   title: string;
@@ -54,6 +55,8 @@ const README_PATTERNS = {
   cli_library_backend: /\b(cli|command line|library|sdk|backend|server|api)\b/gi,
   ui_present:
     /\b(gui|dashboard|web ui|web interface|desktop app|frontend|react|vue|svelte|screenshot)\b/gi,
+  server_runtime:
+    /\b(server|backend|api service|web service|database|docker compose|kubernetes|worker)\b/gi,
 } as const;
 
 const clamp = (value: number) => Math.max(0, Math.min(100, value));
@@ -236,7 +239,11 @@ function inferTypes(input: {
   const { repo, evidence, missingUi, complexity } = input;
   const types: OpportunityType[] = [];
   const c = evidence;
-  if (c.hosted_requests > 0 || c.deployment_problems >= 2 || complexity >= 4)
+  if (
+    c.hosted_requests > 0 ||
+    (c.deployment_problems >= 2 && evidence.readme_signals.hosted > 0) ||
+    (complexity >= 4 && evidence.readme_signals.server_runtime > 0)
+  )
     types.push('Hosted SaaS');
   if (c.api_requests > 0 || evidence.readme_signals.api >= 3)
     types.push('API Wrapper');
@@ -374,6 +381,7 @@ export function analyzeCommercialOpportunity(
     : '最近30天没有可用的非 PR Issue，需求强度仍需访谈验证';
   return {
     repository_id: repo.id,
+    analysis_version: COMMERCIAL_ANALYSIS_VERSION,
     analyzed_at: analyzedAt.toISOString(),
     issue_window_start: new Date(analyzedAt.getTime() - 30 * DAY).toISOString(),
     demand_score: demandScore,
@@ -460,18 +468,26 @@ export async function collectCommercialAnalyses(limit = 24) {
     const ids = response.data.map((repo) => repo.id);
     const existing = ids.length
       ? await supabaseRequest<
-          Array<{ repository_id: string; analyzed_at: string }>
+          Array<{
+            repository_id: string;
+            analyzed_at: string;
+            analysis_version: number;
+          }>
         >(
-          `commercial_analyses?select=repository_id,analyzed_at&repository_id=in.(${ids.join(',')})`,
+          `commercial_analyses?select=repository_id,analyzed_at,analysis_version&repository_id=in.(${ids.join(',')})`,
         )
       : [];
-    const analyzedAt = new Map(
-      existing.map((row) => [row.repository_id, Date.parse(row.analyzed_at)]),
+    const existingById = new Map(
+      existing.map((row) => [row.repository_id, row]),
     );
     const queue = response.data
       .filter(
         (repo) =>
-          Date.now() - (analyzedAt.get(repo.id) ?? 0) >= ANALYSIS_TTL,
+          existingById.get(repo.id)?.analysis_version !==
+            COMMERCIAL_ANALYSIS_VERSION ||
+          Date.now() -
+            Date.parse(existingById.get(repo.id)?.analyzed_at ?? '') >=
+            ANALYSIS_TTL,
       )
       .slice(0, boundedLimit);
     let analyzed = 0;
@@ -547,7 +563,7 @@ export async function getCommercialOpportunities(limit = 100) {
 
 export async function getStoredCommercialAnalysis(repositoryId: string) {
   const rows = await supabaseRequest<StoredAnalysis[]>(
-    `commercial_analyses?select=repository_id,analyzed_at,issue_window_start,demand_score,commercial_score,indie_score,competition_gap,money_score,opportunity_types,monetization_ideas,why_now,user_pain,what_to_build,who_pays,monetization,difficulty,estimated_mvp,evidence&repository_id=eq.${repositoryId}&limit=1`,
+    `commercial_analyses?select=repository_id,analysis_version,analyzed_at,issue_window_start,demand_score,commercial_score,indie_score,competition_gap,money_score,opportunity_types,monetization_ideas,why_now,user_pain,what_to_build,who_pays,monetization,difficulty,estimated_mvp,evidence&repository_id=eq.${repositoryId}&limit=1`,
   );
   return rows[0] ?? null;
 }

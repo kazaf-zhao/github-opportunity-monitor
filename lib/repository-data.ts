@@ -267,7 +267,7 @@ async function loadCommercialAnalyses(ids: string[]) {
   for (let start = 0; start < ids.length; start += 100) {
     rows.push(
       ...(await supabaseRequest<CommercialAnalysis[]>(
-        `commercial_analyses?select=repository_id,analyzed_at,issue_window_start,demand_score,commercial_score,indie_score,competition_gap,money_score,opportunity_types,monetization_ideas,why_now,user_pain,what_to_build,who_pays,monetization,difficulty,estimated_mvp,evidence&repository_id=in.(${ids.slice(start, start + 100).join(',')})`,
+        `commercial_analyses?select=repository_id,analysis_version,analyzed_at,issue_window_start,demand_score,commercial_score,indie_score,competition_gap,money_score,opportunity_types,monetization_ideas,why_now,user_pain,what_to_build,who_pays,monetization,difficulty,estimated_mvp,evidence&repository_id=in.(${ids.slice(start, start + 100).join(',')})`,
       )),
     );
   }
