@@ -15,7 +15,7 @@ import { supabaseCount, supabaseRequest } from './supabase';
 
 const DAY = 86_400_000;
 const ANALYSIS_TTL = 6 * 3_600_000;
-const COMMERCIAL_ANALYSIS_VERSION = 3;
+const COMMERCIAL_ANALYSIS_VERSION = 4;
 
 type GitHubIssue = {
   title: string;
@@ -34,7 +34,7 @@ const ISSUE_PATTERNS = {
     /\b(deploy|deployment|install|installation|setup|docker|self[ -]?host|configuration|environment variable|env var)\b/i,
   integration_requests:
     /\b(integrat|plugin|connector|slack|discord|telegram|notion|chrome|vscode|visual studio code)\b/i,
-  hosted_requests: /\b(hosted|hosting|cloud|managed|saas|one[ -]?click)\b/i,
+  hosted_requests: /\b(hosted|hosting|cloud hosted|managed service|saas)\b/i,
   api_requests: /\b(api|sdk|webhook|endpoint|rest|graphql)\b/i,
   ui_requests:
     /\b(ui|gui|dashboard|web interface|frontend|desktop app|user interface)\b/i,
@@ -236,8 +236,16 @@ function inferTypes(input: {
   missingUi: boolean;
   complexity: number;
   hostedEligible: boolean;
+  apiEligible: boolean;
 }) {
-  const { repo, evidence, missingUi, complexity, hostedEligible } = input;
+  const {
+    repo,
+    evidence,
+    missingUi,
+    complexity,
+    hostedEligible,
+    apiEligible,
+  } = input;
   const types: OpportunityType[] = [];
   const c = evidence;
   if (
@@ -247,7 +255,10 @@ function inferTypes(input: {
       complexity >= 4)
   )
     types.push('Hosted SaaS');
-  if (c.api_requests > 0 || evidence.readme_signals.api >= 3)
+  if (
+    apiEligible &&
+    (c.api_requests > 0 || evidence.readme_signals.api >= 3)
+  )
     types.push('API Wrapper');
   if (c.ui_requests > 0 || missingUi) types.push('UI Wrapper');
   if (c.integration_requests > 0) types.push('Integration');
@@ -297,7 +308,7 @@ export function analyzeCommercialOpportunity(
     signals.complexity + Math.min(counts.deployment_problems, 5),
   );
   const hostedEligible =
-    signals.server_runtime > 0 ||
+    (signals.server_runtime >= 4 && signals.deployment >= 2) ||
     ['AI', 'Agents', 'MCP', 'Developer Tools', 'Data', 'Infrastructure'].includes(
       repo.category,
     );
@@ -309,7 +320,14 @@ export function analyzeCommercialOpportunity(
           signals.hosted * 5,
       )
     : 0;
-  const apiStrength = Math.min(100, counts.api_requests * 35 + signals.api * 4);
+  const apiEligible =
+    counts.api_requests >= 2 ||
+    ['AI', 'Agents', 'MCP', 'Developer Tools', 'Data', 'Infrastructure'].includes(
+      repo.category,
+    );
+  const apiStrength = apiEligible
+    ? Math.min(100, counts.api_requests * 35 + signals.api * 4)
+    : 0;
   const uiStrength = Math.min(
     100,
     counts.ui_requests * 40 + (missingUi ? 55 : 0),
@@ -371,6 +389,7 @@ export function analyzeCommercialOpportunity(
     missingUi,
     complexity,
     hostedEligible,
+    apiEligible,
   });
   const ideas = types.map((type) => buildIdea(type, repo)).slice(0, 3);
   let moneyScore = Math.round(
